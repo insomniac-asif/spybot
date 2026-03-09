@@ -1,16 +1,48 @@
-venv/
-.venv/
+# ── Sensitive / secrets ──────────────────────────────────────────
 .env
 .env.*
-node_modules/
+*.env
+secrets.json
+secrets.yaml
+credentials.json
+config.local.*
+
+# ── Data files (may contain account info / trade history) ────────
+data/account.json
+data/heartbeat.json
+data/trade_journal.db
+data/trade_journal.db-wal
+data/trade_journal.db-shm
+data/md_state.json
+data/sims/*.json
+data/predictions.csv
+data/conviction_expectancy.csv
+data/qqq_1m.csv
+
+# ── Logs ─────────────────────────────────────────────────────────
+logs/
+*.log
+system.log
+
+# ── Python ───────────────────────────────────────────────────────
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .pytest_cache/
 .mypy_cache/
+
+# ── Virtual envs ─────────────────────────────────────────────────
+venv/
+.venv/
+
+# ── Build / dist ─────────────────────────────────────────────────
 dist/
 build/
-*.log
-.vscode/
+*.egg-info/
+
+# ── OS / editor ──────────────────────────────────────────────────
 .DS_Store
+.vscode/
+*.swp
+node_modules/

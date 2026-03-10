@@ -78,7 +78,10 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+    return FileResponse(
+        os.path.join(STATIC_DIR, "index.html"),
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.get("/api/sims")

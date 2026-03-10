@@ -235,48 +235,136 @@ async def handle_simcompare(ctx):
         await _send_embed(ctx, "simcompare failed due to an internal error.")
 
 
+def _progress_bar(score: float, width: int = 10) -> str:
+    filled = max(0, min(width, round(score / 100 * width)))
+    return "█" * filled + "░" * (width - filled)
+
+
 async def handle_simleaderboard(ctx):
-    def _color_pct(val):
-        try: num = float(val)
-        except (TypeError, ValueError): return A("N/A", "gray")
-        return A(f"{num:+.1f}%", "green" if num >= 0 else "red")
-    def _pnl_or_na(val): return pnl_col(val) if val is not None else A("N/A", "gray")
-    def _pick_best(items, key, prefer_high=True, filter_fn=None):
-        pool = [m for m in items if (filter_fn(m) if filter_fn else True)]
-        if not pool: return None
-        return max(pool, key=lambda x: x.get(key, 0)) if prefer_high else min(pool, key=lambda x: x.get(key, 0))
     try:
+        from analytics.composite_score import compute_composite_score, WEIGHTS
         metrics, profiles = _collect_sim_metrics()
-        if not profiles: await _send_embed(ctx, "No sim profiles found."); return
-        if not metrics: await _send_embed(ctx, "No sim data available yet."); return
-        def _fmt(m, extra=None):
-            rp = (m.get("return_pct", 0.0) or 0.0) * 100
-            return ab(
-                f"{lbl('Sim')} {A(m['sim_id'], 'cyan', bold=True)}  {lbl('Trades')} {A(str(m['trades']), 'white', bold=True)}",
-                f"{lbl('WR')} {wr_col(m['win_rate'])}  {lbl('PnL')} {pnl_col(m['total_pnl'])}  {lbl('Return')} {_color_pct(rp)}",
-                *([extra] if extra else []),
-            )
-        eligible = lambda m: m["trades"] >= 3
-        bw = _pick_best(metrics, "win_rate", filter_fn=eligible)
-        bp = _pick_best(metrics, "total_pnl", filter_fn=eligible)
-        bf = _pick_best(metrics, "equity_speed", filter_fn=lambda m: eligible(m) and m["equity_speed"] is not None)
-        be = _pick_best(metrics, "expectancy", filter_fn=eligible)
-        bwin = _pick_best(metrics, "max_win", filter_fn=eligible)
-        risky = _pick_best(metrics, "max_drawdown", filter_fn=lambda m: eligible(m) and m["total_pnl"] > 0)
-        ma = _pick_best(metrics, "trades", filter_fn=lambda m: True)
-        embed = discord.Embed(title="\U0001f3c1 Sim Leaderboard \u2014 Best At Each Role", color=0x3498DB)
-        if bw: embed.add_field(name="\U0001f3c6 Best Win Rate", value=_fmt(bw), inline=False)
-        if bp: embed.add_field(name="\U0001f4b0 Best Total PnL", value=_fmt(bp), inline=False)
-        if bf: embed.add_field(name="\u26a1 Fastest Equity Growth", value=_fmt(bf, f"{lbl('Speed')} {_pnl_or_na(bf.get('equity_speed'))} {A('/day', 'cyan')}"), inline=False)
-        if be: embed.add_field(name="\U0001f4c8 Best Expectancy", value=_fmt(be, f"{lbl('Expectancy')} {_pnl_or_na(be.get('expectancy'))}"), inline=False)
-        if bwin: embed.add_field(name="\U0001f4a5 Biggest Winner", value=_fmt(bwin, f"{lbl('Max Win')} {_pnl_or_na(bwin.get('max_win'))}  {lbl('Max Loss')} {_pnl_or_na(bwin.get('max_loss'))}"), inline=False)
-        if risky: embed.add_field(name="\u26a0\ufe0f High-Risk / High-Reward", value=_fmt(risky, f"{lbl('Drawdown')} {drawdown_col(risky.get('max_drawdown'))}  {lbl('PnL')} {pnl_col(risky.get('total_pnl'))}"), inline=False)
-        if ma: embed.add_field(name="\U0001f9ee Most Active", value=_fmt(ma), inline=False)
-        _append_footer(embed)
+        if not profiles:
+            await _send_embed(ctx, "No sim profiles found."); return
+        if not metrics:
+            await _send_embed(ctx, "No sim data available yet."); return
+
+        # Compute composite scores for all sims
+        scored = []
+        unranked = []
+        for m in metrics:
+            sim_id = m["sim_id"]
+            profile = profiles.get(sim_id, {})
+            r = compute_composite_score(sim_id, profile)
+            if r["unranked"]:
+                unranked.append((sim_id, m["trades"]))
+            else:
+                r["_metrics"] = m
+                scored.append(r)
+
+        scored.sort(key=lambda x: x["composite_score"], reverse=True)
+
+        embed = discord.Embed(
+            title="🏆 Sim Leaderboard — Composite Ranking",
+            color=0xF1C40F,
+        )
+
+        if scored:
+            rank_lines = []
+            for rank, r in enumerate(scored, 1):
+                m          = r["_metrics"]
+                medal      = "🥇" if rank == 1 else "🥈" if rank == 2 else "🥉" if rank == 3 else f"#{rank}"
+                pf_raw     = m.get("profit_factor") or 0
+                rp         = (m.get("return_pct") or 0) * 100
+                comp_str   = f"{r['composite_score']:.1f}"
+                rp_str     = f"{rp:+.1f}%"
+                rp_color   = "green" if rp >= 0 else "red"
+                pf_str     = f"{pf_raw:.2f}" if pf_raw else "N/A"
+                line = (
+                    f"{lbl(medal)} {A(r['sim_id'], 'cyan', bold=True)} "
+                    f"{A(r['emoji'], 'white')} {A(r['grade'], 'yellow', bold=True)} "
+                    f"{A(comp_str, 'white', bold=True)}  "
+                    f"{lbl('P&L')} {A(rp_str, rp_color)}  "
+                    f"{lbl('WR')} {wr_col(m.get('win_rate', 0))}  "
+                    f"{lbl('PF')} {A(pf_str, 'white')}"
+                )
+                rank_lines.append(line)
+
+            # Chunk into fields of 5 lines each
+            for i in range(0, len(rank_lines), 5):
+                chunk = rank_lines[i:i + 5]
+                embed.add_field(
+                    name="Rankings" if i == 0 else "​",
+                    value=ab(*chunk),
+                    inline=False,
+                )
+
+        if unranked:
+            unranked_lines = [
+                f"{A(sid, 'gray')}  {A(f'({n} trades — need {10})', 'gray')}"
+                for sid, n in unranked[:8]
+            ]
+            embed.add_field(name="Unranked (< 10 trades)", value=ab(*unranked_lines), inline=False)
+
+        w = WEIGHTS
+        embed.set_footer(text=(
+            f"Composite: {int(w['profitability']*100)}% P&L "
+            f"+ {int(w['win_rate']*100)}% WR "
+            f"+ {int(w['risk_adjusted']*100)}% PF "
+            f"+ {int(w['consistency']*100)}% Consistency "
+            f"+ {int(w['drawdown']*100)}% DD Control"
+        ))
         await ctx.send(embed=embed)
     except Exception:
         logging.exception("simleaderboard_error")
         await _send_embed(ctx, "simleaderboard failed due to an internal error.")
+
+
+async def handle_simreport(ctx, sim_id: str):
+    try:
+        from analytics.composite_score import compute_composite_score, WEIGHTS
+        profiles = _load_sim_profiles()
+        if not profiles:
+            await _send_embed(ctx, "No sim profiles found."); return
+        profile = profiles.get(sim_id)
+        if not isinstance(profile, dict):
+            await _send_embed(ctx, f"Unknown sim: {sim_id}"); return
+
+        r = compute_composite_score(sim_id, profile)
+
+        if r["unranked"]:
+            await _send_embed(ctx, f"**{sim_id}** is UNRANKED — {r['unranked_reason']} ({r['total_trades']} trades).")
+            return
+
+        grade_line = f"{r['emoji']} **{r['grade']}** ({r['composite_score']}/100)"
+        comp = r["components"]
+
+        def _bar_line(label: str, key: str, suffix: str) -> str:
+            c = comp[key]
+            bar = _progress_bar(c["score"])
+            return f"`{label:<14} {bar}  {c['score']:5.1f}  ({suffix})`"
+
+        lines = [
+            f"Overall: {grade_line}",
+            "─" * 38,
+            _bar_line("Profitability", "profitability", f"{comp['profitability']['raw']:+.1f}%"),
+            _bar_line("Win Rate     ", "win_rate",      f"{comp['win_rate']['raw']:.1f}%"),
+            _bar_line("Risk-Adjusted", "risk_adjusted", f"PF {comp['risk_adjusted']['raw']:.2f}"),
+            _bar_line("Consistency  ", "consistency",   f"{comp['consistency']['raw']:.0f}% green days"),
+            _bar_line("Drawdown Ctrl", "drawdown",      f"{comp['drawdown']['raw']:.1f}% max DD"),
+            "",
+            f"Trades: {r['total_trades']} | Days: {r['days_active']:.0f} | Signal: {r['signal_mode'] or '—'}",
+        ]
+        embed = discord.Embed(
+            title=f"📊 {sim_id} — Performance Report Card",
+            description="\n".join(lines),
+            color=0x3498DB,
+        )
+        _append_footer(embed)
+        await ctx.send(embed=embed)
+    except Exception:
+        logging.exception("simreport_error")
+        await _send_embed(ctx, f"simreport failed for {sim_id}.")
 
 
 async def handle_simdte(ctx):

@@ -32,6 +32,7 @@ from simulation.sim_watcher_loops import (
     _collect_session_sim_rows,
     _build_session_leaderboard_page,
     SKIP_DEDUP_REASONS,
+    _skip_dedup_key,
     _build_circuit_breaker_embed,
     _build_trade_history_ready_embed,
 )
@@ -315,10 +316,70 @@ async def sim_entry_loop() -> None:
         try:
             if _is_market_hours():
                 from simulation.sim_engine import run_sim_entries
-                df = get_market_dataframe()
+                df = await asyncio.to_thread(get_market_dataframe)
                 global _SIM_LAST_DATA_AGE
                 _SIM_LAST_DATA_AGE = _get_data_age_text(df)
-                results = await run_sim_entries(df, regime=_derive_regime(df))
+
+                # Build trader_signal context for SIM09 Opportunity Ranker.
+                # Captures the main trader's current prediction state without
+                # blocking the event loop or importing execution/interface modules.
+                _trader_signal = None
+                try:
+                    from signals.predictor import make_prediction
+                    from signals.regime import get_regime as _get_regime_fn
+                    _pred_15 = make_prediction(15, df)
+                    _pred_60 = make_prediction(60, df)
+                    _regime_now = _get_regime_fn(df) if df is not None else None
+                    _dir_15 = _pred_15.get("direction") if isinstance(_pred_15, dict) else None
+                    _conf_15 = _pred_15.get("confidence") if isinstance(_pred_15, dict) else None
+                    _dir_60 = _pred_60.get("direction") if isinstance(_pred_60, dict) else None
+                    _conf_60 = _pred_60.get("confidence") if isinstance(_pred_60, dict) else None
+                    _ml_pred = _pred_60 if isinstance(_pred_60, dict) else None
+                    _und_price = None
+                    if df is not None and len(df) > 0:
+                        try:
+                            _und_price = float(df.iloc[-1].get("close") or 0) or None
+                        except Exception:
+                            _und_price = None
+                    # Fetch real conviction from evaluate_opportunity() (pure function, no side effects).
+                    # Falls back to ML confidence (0.0-1.0) when no clear setup is detected.
+                    _primary_dir = _dir_60 or _dir_15
+                    _real_conviction = None
+                    _environment_passed = None
+                    try:
+                        from signals.opportunity import evaluate_opportunity
+                        _opp_result = evaluate_opportunity(df)
+                        if _opp_result is not None:
+                            # Normalize int conviction score (3-7) to 0.0-1.0 range
+                            _real_conviction = min(1.0, float(_opp_result[4]) / 7.0)
+                            _primary_dir = "BULLISH" if _opp_result[0] == "CALLS" else "BEARISH"
+                            _environment_passed = True
+                        else:
+                            # No clear setup: use ML confidence as proxy, no env bonus/penalty
+                            _real_conviction = _conf_60
+                    except Exception:
+                        _real_conviction = _conf_60
+                    _trader_signal = {
+                        "direction": _primary_dir,
+                        "underlying_price": _und_price,
+                        "conviction_score": _real_conviction,
+                        "ml_prediction": _ml_pred,
+                        "confidence_15m": _conf_15,
+                        "confidence_60m": _conf_60,
+                        "environment_passed": _environment_passed,
+                        "setup_expectancy": None,
+                    }
+                except Exception:
+                    _trader_signal = None
+
+                results = await run_sim_entries(df, regime=_derive_regime(df), trader_signal=_trader_signal)
+                # Sims that opened a trade this cycle — suppress skip
+                # notifications for those sims (e.g. empty_chain from VXX
+                # after SPY successfully opened).
+                _opened_sims = {
+                    r.get("sim_id") for r in results
+                    if r.get("status") in {"opened", "live_submitted"} and r.get("sim_id")
+                }
                 for result in results:
                     logging.debug("sim_entry_result: %s", result)
                     try:
@@ -359,12 +420,21 @@ async def sim_entry_loop() -> None:
                                     skip_embed = _build_skip_embed(sim_id, result)
                                     await _post_sim_event(sim_id, skip_embed)
                             elif reason in SKIP_DEDUP_REASONS:
-                                last_reason = _SIM_LAST_SKIP_REASON.get(sim_id)
-                                if last_reason != reason:
-                                    _SIM_LAST_SKIP_REASON[sim_id] = reason
-                                    _SIM_LAST_SKIP_TIME[sim_id] = _now_et()
-                                    skip_embed = _build_skip_embed(sim_id, result)
-                                    await _post_sim_event(sim_id, skip_embed)
+                                # Suppress if this sim already opened a trade
+                                # this cycle (e.g. empty_chain from VXX after
+                                # SPY succeeded).
+                                if sim_id in _opened_sims:
+                                    pass
+                                else:
+                                    last_reason = _SIM_LAST_SKIP_REASON.get(sim_id)
+                                    # Use bucket keys so chain-failure variants
+                                    # (empty_chain ↔ no_contract ↔ no_snapshot)
+                                    # don't retrigger the notification.
+                                    if _skip_dedup_key(last_reason or "") != _skip_dedup_key(reason):
+                                        _SIM_LAST_SKIP_REASON[sim_id] = reason
+                                        _SIM_LAST_SKIP_TIME[sim_id] = _now_et()
+                                        skip_embed = _build_skip_embed(sim_id, result)
+                                        await _post_sim_event(sim_id, skip_embed)
                         elif sim_id and status == "circuit_breaker_tripped":
                             await _post_sim_event(
                                 sim_id, _build_circuit_breaker_embed(sim_id, result, tripped=True)

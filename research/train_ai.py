@@ -68,6 +68,11 @@ def train_direction_model():
         print("Market data file unreadable. Skipping direction model retrain.")
         return
 
+    # pandas_ta vwap requires a sorted DatetimeIndex
+    if "timestamp" in df.columns:
+        df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
+        df = df.dropna(subset=["timestamp"]).set_index("timestamp").sort_index()
+
     close = cast(pd.Series, df["close"])
     high = cast(pd.Series, df["high"])
     low = cast(pd.Series, df["low"])

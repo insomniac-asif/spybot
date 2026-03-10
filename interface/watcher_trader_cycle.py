@@ -94,7 +94,7 @@ async def _run_auto_trader_cycle(
             ts = ts.astimezone(eastern)
         now = datetime.now(eastern)
         age_seconds = (now - ts).total_seconds()
-        if age_seconds > 120:
+        if age_seconds > 300:
             debug_log(
                 "data_stale_block",
                 candle_time=ts.isoformat(),
@@ -115,7 +115,7 @@ async def _run_auto_trader_cycle(
                     color=0xE67E22
                 )
                 stale_embed.add_field(name="⏱️ Data Age", value=ab(A(f"{age_seconds:.0f}s", "red", bold=True)), inline=True)
-                stale_embed.add_field(name="⚠️ Threshold", value=ab(A("120s", "yellow", bold=True)), inline=True)
+                stale_embed.add_field(name="⚠️ Threshold", value=ab(A("300s", "yellow", bold=True)), inline=True)
                 stale_embed.add_field(name="📋 Action", value=ab(A("Bot will retry once data freshens. No trades will open until feed recovers.", "yellow")), inline=False)
                 stale_embed.set_footer(text=f"{_format_et(now)}")
                 await _send(channel, embed=stale_embed)

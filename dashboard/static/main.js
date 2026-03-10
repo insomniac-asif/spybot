@@ -885,6 +885,7 @@ function buildSeat(sim) {
   const active      = sim.open_count > 0;
   const mood        = sim.pnl_dollars > 0 ? 'happy' : sim.pnl_dollars < 0 ? 'sad' : 'neutral';
   const colorIdx    = Math.max(0, parseInt(sim.sim_id.replace('SIM', ''), 10) - 1);
+  const archetype   = SIM_STYLES[colorIdx] || 'casual';
   const personality = getPersonality(sim.signal_mode);
   const bubbleText  = buildBubbleText(sim);
 
@@ -908,6 +909,7 @@ function buildSeat(sim) {
   const wasSelected = currentSimId === sim.sim_id;
   seat.className = 'seat' + (active ? ' active' : '') + (sleeping ? ' sleeping' : '') + (wasSelected ? ' selected' : '');
   seat.dataset.simId = sim.sim_id;
+  seat.dataset.archetype = archetype;
   seat.onclick = () => openDrawer(sim.sim_id);
 
   // Personality tooltip (mouse-only — skipped on touch devices)
@@ -946,6 +948,7 @@ function buildSeat(sim) {
         <span class="desk-wr ${wrClass}">${wrText}</span>
       </div>
       <div class="desk-footer">${shortName(sim.signal_mode || '')}</div>
+      <div class="archetype-badge archetype-badge-${archetype}">${archetype}</div>
       ${sim.symbols && sim.symbols.length ? `<div class="desk-symbols">${sim.symbols.join(' · ')}</div>` : ''}
     </div>
   `;
@@ -965,10 +968,43 @@ const HAIR_COLORS = ['#181008','#4a2810','#b08028','#a83818','#585858','#0e0e0e'
 // Desk item variation per student: determines what items appear on their desk
 const DESK_ITEMS = ['papers_mug', 'books_pencil', 'papers_apple', 'notebook_mug', 'books_mug', 'papers_pencil'];
 
+// ─────────────────────────────────────────────── STYLE ARCHETYPES (v2 — 14 styles)
+const SIM_STYLES = [
+  'formal','punk','nerd','pastel','grunge','street',       // SIM00–05
+  'emo','cottagecore','jock','artsy','gangster','techy',   // SIM06–11
+  'preppy','punk','casual','pastel','formal','emo',        // SIM12–17
+  'grunge','street','artsy','nerd','cottagecore','jock',   // SIM18–23
+  'gangster','techy','preppy','punk','casual','emo',       // SIM24–29
+  'artsy','formal','grunge','street','nerd','cottagecore', // SIM30–35
+];
+const ARCHETYPE_SHIRTS = {
+  punk:        ['#1a1a1a','#141414','#222222'],
+  grunge:      ['#8B0000','#780000','#9e0808'],
+  formal:      ['#F0F0F0','#E8E8E8','#F8F8F8'],
+  street:      ['#FF8C00','#e07800','#ff9a18'],
+  casual:      ['#4682B4','#3a72a0','#5090c8'],
+  gangster:    ['#6A0DAD','#5a0098','#7a1ac0'],
+  nerd:        ['#87CEEB','#70bcd8','#a0deff'],
+  jock:        ['#E03030','#cc2828','#f04040'],
+  emo:         ['#2D0040','#240034','#380050'],
+  pastel:      ['#FFB6C1','#f0a0b0','#ffc8d0'],
+  artsy:       ['#FFD700','#e0be00','#ffe820'],
+  techy:       ['#404040','#363636','#4a4a4a'],
+  cottagecore: ['#8FBC8F','#7aaa7a','#a0cca0'],
+  preppy:      ['#1E3A5F','#183050','#2a4870'],
+};
+const ARCHETYPE_BLANKETS = {
+  punk:'#1a1a1a', grunge:'#8a3018', formal:'#1e2d40', street:'#383838',
+  casual:'#5878b8', gangster:'#1a2a1a', nerd:'#2a5888', jock:'#c03020',
+  emo:'#180818', pastel:'#FFB6C1', artsy:'#c87828', techy:'#0a0a1a',
+  cottagecore:'#c8b890', preppy:'#7ba0c8',
+};
+
 function studentSVG(simId, mood, idx, personality = 'casual', active = false) {
-  const shirt = SHIRT_COLORS[idx % SHIRT_COLORS.length];
-  const skin  = SKIN_TONES[(idx * 3) % SKIN_TONES.length];
-  const deskItem = DESK_ITEMS[idx % DESK_ITEMS.length];
+  const archetype = SIM_STYLES[idx] || 'casual';
+  const skin      = SKIN_TONES[(idx * 3) % SKIN_TONES.length];
+  const arcS      = ARCHETYPE_SHIRTS[archetype] || ARCHETYPE_SHIRTS.casual;
+  const shirt     = arcS[idx % arcS.length];
 
   // ── Gender assignment (deterministic by idx)
   // idx = simNumber - 1 clamped to 0; SIM00+SIM01 share idx=0 → both female
@@ -989,9 +1025,23 @@ function studentSVG(simId, mood, idx, personality = 'casual', active = false) {
     '#7b3f8c', // purple (fun)
     '#2255aa', // blue (fun)
   ];
-  const hair = isFemale
+  let hair = isFemale
     ? FEMALE_HAIR_COLORS[(idx * 3 + 1) % FEMALE_HAIR_COLORS.length]
     : HAIR_COLORS[(idx * 2) % HAIR_COLORS.length];
+
+  // Archetype hair overrides — strong visual signal
+  if (archetype === 'punk') {
+    const PUNK_HAIR = ['#39FF14','#FF00FF','#00FFFF','#FF2222'];
+    hair = PUNK_HAIR[idx % PUNK_HAIR.length];
+  } else if (archetype === 'emo') {
+    hair = '#090909';
+  } else if (archetype === 'pastel') {
+    const PASTEL_HAIR = ['#C8A0D8','#F0A0C0','#E8E8FF'];
+    hair = PASTEL_HAIR[idx % PASTEL_HAIR.length];
+  } else if (archetype === 'artsy') {
+    const ARTSY_HAIR = ['#FF4500','#FFD700','#FF1493','#00CED1'];
+    hair = ARTSY_HAIR[idx % ARTSY_HAIR.length];
+  }
 
   // Darker / lighter shades for hair detail
   const shadeHex = (hex, delta) => hex.replace(/[0-9a-f]{2}/gi, h =>
@@ -1199,70 +1249,631 @@ function studentSVG(simId, mood, idx, personality = 'casual', active = false) {
     }
   }
 
-  // Optional necklace for some female characters
-  const necklace = (isFemale && idx % 3 === 0) ? `
-      <rect x="21" y="32" width="2" height="1" fill="#d0a020"/>
-      <rect x="25" y="32" width="2" height="1" fill="#d0a020"/>
-      <rect x="23" y="33" width="2" height="1" fill="#b88018" opacity="0.8"/>` : '';
+  // ── Archetype clothing overlay (drawn over shirt)
+  const shirtDark2 = shadeHex(shirt, -50);
+  // Per-archetype accent values (deterministic)
+  const neonC  = ['#00ff44','#ff00aa','#00ccff','#ff6600','#cc00ff'][(idx * 7) % 5];
+  const capC   = ['#1a1a1a','#8a0000','#00008a','#2a1a2a'][(idx * 5) % 4];
+  const vestC  = ['#1e3a6a','#8a1a2a','#2a5a2a','#6a2a6a'][(idx * 5) % 4];
+  const bandC  = ['#ff3020','#20a030','#4040c0','#f0b020'][(idx * 7) % 4];
+  const glassC = ['#2a2040','#8a2020','#3a2810'][(idx * 3) % 3];
+  const catC   = ['#e89040','#1a1a1a','#888888','#e8c8a0'][(idx >> 1) % 4];
+  const dogC   = ['#c87040','#d4a858','#e8e0d0'][(idx * 3) % 3];
+  const birdC  = ['#f0d020','#4080d0','#40c060'][idx % 3];
 
-  // Desk items — left side and right side
-  let leftItems = '', rightItems = '';
-  if (deskItem === 'papers_mug') {
-    leftItems = `
-      <rect x="1" y="42" width="10" height="8" fill="#ede4d0"/>
-      <rect x="2" y="44" width="8" height="1" fill="rgba(120,100,60,0.3)"/>
-      <rect x="2" y="46" width="6" height="1" fill="rgba(120,100,60,0.3)"/>`;
-    rightItems = `
-      <rect x="38" y="43" width="7" height="7" fill="#a85028"/>
-      <rect x="38" y="43" width="7" height="2" fill="#c06030"/>
-      <rect x="45" y="45" width="2" height="3" fill="#a85028"/>
-      <rect x="39" y="44" width="2" height="1" fill="rgba(255,255,255,0.15)"/>`;
-  } else if (deskItem === 'books_pencil') {
-    leftItems = `
-      <rect x="1" y="44" width="10" height="6" fill="#c04040"/>
-      <rect x="1" y="44" width="10" height="1" fill="#d06060"/>
-      <rect x="2" y="42" width="8" height="3" fill="#4060b0"/>
-      <rect x="2" y="42" width="8" height="1" fill="#5078c8"/>`;
-    rightItems = `
-      <rect x="40" y="43" width="1" height="8" fill="#d8c020" transform="rotate(-12 40 47)"/>
-      <rect x="40" y="42" width="1" height="2" fill="#e8a088" transform="rotate(-12 40 43)"/>`;
-  } else if (deskItem === 'papers_apple') {
-    leftItems = `
-      <rect x="1" y="42" width="10" height="8" fill="#ede4d0"/>
-      <rect x="2" y="44" width="8" height="1" fill="rgba(120,100,60,0.3)"/>
-      <rect x="2" y="46" width="5" height="1" fill="rgba(120,100,60,0.3)"/>`;
-    rightItems = `
-      <circle cx="42" cy="47" r="4" fill="#c83030"/>
-      <rect x="41" y="42" width="2" height="2" fill="#5a8030"/>
-      <rect x="42" y="42" width="1" height="3" fill="#6a4020"/>`;
-  } else if (deskItem === 'notebook_mug') {
-    leftItems = `
-      <rect x="1" y="42" width="10" height="8" fill="#e8d8a8"/>
-      <rect x="1" y="42" width="2" height="8" fill="#c0a870"/>
-      <rect x="4" y="44" width="6" height="1" fill="rgba(100,80,40,0.3)"/>
-      <rect x="4" y="46" width="4" height="1" fill="rgba(100,80,40,0.3)"/>`;
-    rightItems = `
-      <rect x="38" y="43" width="7" height="7" fill="#486898"/>
-      <rect x="38" y="43" width="7" height="2" fill="#5880b0"/>
-      <rect x="45" y="45" width="2" height="3" fill="#486898"/>`;
-  } else if (deskItem === 'books_mug') {
-    leftItems = `
-      <rect x="1" y="44" width="10" height="6" fill="#307848"/>
-      <rect x="1" y="44" width="10" height="1" fill="#409858"/>
-      <rect x="2" y="42" width="9" height="3" fill="#884030"/>
-      <rect x="2" y="42" width="9" height="1" fill="#a85840"/>`;
-    rightItems = `
-      <rect x="38" y="43" width="7" height="7" fill="#a85028"/>
-      <rect x="38" y="43" width="7" height="2" fill="#c06030"/>
-      <rect x="45" y="45" width="2" height="3" fill="#a85028"/>`;
-  } else {
-    leftItems = `
-      <rect x="1" y="42" width="10" height="8" fill="#ede4d0"/>
-      <rect x="2" y="44" width="8" height="1" fill="rgba(120,100,60,0.3)"/>`;
-    rightItems = `
-      <rect x="40" y="43" width="1" height="8" fill="#d8c020" transform="rotate(-12 40 47)"/>
-      <rect x="40" y="42" width="1" height="2" fill="#e8a088" transform="rotate(-12 40 43)"/>`;
+  let clothingOverlay = '';
+  if (archetype === 'punk') {
+    clothingOverlay = `
+      <rect x="7"  y="30" width="3"  height="14" fill="#1a1a1a"/>
+      <rect x="38" y="30" width="3"  height="14" fill="#1a1a1a"/>
+      <rect x="3"  y="31" width="4"  height="4"  fill="#252525"/>
+      <rect x="41" y="31" width="4"  height="4"  fill="#252525"/>
+      <rect x="22" y="31" width="4"  height="1"  fill="#d0d0d0"/>
+      <rect x="21" y="32" width="2"  height="1"  fill="#d0d0d0"/>
+      <rect x="23" y="33" width="3"  height="1"  fill="#d0d0d0"/>
+      <rect x="21" y="34" width="3"  height="1"  fill="#d0d0d0"/>
+      <rect x="22" y="35" width="4"  height="1"  fill="#d0d0d0"/>
+      <rect x="14" y="34" width="4"  height="3"  fill="#ff2040" opacity="0.9"/>
+      <rect x="15" y="34" width="1"  height="1"  fill="#ffffff" opacity="0.4"/>`;
+  } else if (archetype === 'grunge') {
+    const s1 = shadeHex(shirt, +12);
+    const s2 = shadeHex(shirt, -28);
+    clothingOverlay = `
+      <rect x="10" y="30" width="28" height="3"  fill="${s1}"/>
+      <rect x="10" y="33" width="28" height="3"  fill="${s2}"/>
+      <rect x="10" y="36" width="28" height="3"  fill="${s1}"/>
+      <rect x="10" y="39" width="28" height="3"  fill="${s2}"/>
+      <rect x="10" y="42" width="28" height="3"  fill="${s1}"/>
+      <rect x="3"  y="31" width="8"  height="3"  fill="${s1}"/>
+      <rect x="3"  y="34" width="8"  height="3"  fill="${s2}"/>
+      <rect x="3"  y="37" width="8"  height="3"  fill="${s1}"/>
+      <rect x="3"  y="40" width="8"  height="3"  fill="${s2}"/>
+      <rect x="37" y="31" width="8"  height="3"  fill="${s1}"/>
+      <rect x="37" y="34" width="8"  height="3"  fill="${s2}"/>
+      <rect x="37" y="37" width="8"  height="3"  fill="${s1}"/>
+      <rect x="37" y="40" width="8"  height="3"  fill="${s2}"/>`;
+  } else if (archetype === 'formal') {
+    const lapC = shadeHex(shirt, -22);
+    clothingOverlay = `
+      <rect x="10" y="30" width="6"  height="15" fill="${lapC}"/>
+      <rect x="32" y="30" width="6"  height="15" fill="${lapC}"/>
+      <rect x="16" y="30" width="2"  height="8"  fill="${lapC}" opacity="0.5"/>
+      <rect x="30" y="30" width="2"  height="8"  fill="${lapC}" opacity="0.5"/>
+      <rect x="19" y="30" width="10" height="4"  fill="#e8e8e8"/>
+      <rect x="20" y="30" width="8"  height="2"  fill="#f4f4f4"/>
+      <rect x="22" y="36" width="4"  height="2"  fill="#FFD700"/>
+      <rect x="22" y="39" width="4"  height="2"  fill="#FFD700"/>
+      <rect x="22" y="42" width="4"  height="2"  fill="#FFD700"/>`;
+  } else if (archetype === 'street') {
+    const hoodC = shadeHex(shirt, -18);
+    clothingOverlay = `
+      <rect x="9"  y="22" width="30" height="10" rx="3" fill="${hoodC}"/>
+      <rect x="11" y="23" width="26" height="8"  rx="2" fill="${shirt}"/>
+      <rect x="9"  y="22" width="5"  height="14" fill="${hoodC}"/>
+      <rect x="34" y="22" width="5"  height="14" fill="${hoodC}"/>
+      <rect x="7"  y="30" width="3"  height="13" fill="${shirt}"/>
+      <rect x="38" y="30" width="3"  height="13" fill="${shirt}"/>
+      <rect x="22" y="30" width="1"  height="7"  fill="${hoodC}"/>
+      <rect x="25" y="30" width="1"  height="7"  fill="${hoodC}"/>`;
+  } else if (archetype === 'casual') {
+    clothingOverlay = '';
+  } else if (archetype === 'gangster') {
+    clothingOverlay = `
+      <rect x="8"  y="30" width="2"  height="16" fill="${shirt}"/>
+      <rect x="38" y="30" width="2"  height="16" fill="${shirt}"/>
+      <rect x="18" y="30" width="12" height="4"  fill="#e8e8e0"/>
+      <rect x="19" y="30" width="10" height="2"  fill="#f4f4ec"/>
+      <rect x="10" y="33" width="4"  height="10" fill="${shadeHex(shirt,+20)}" opacity="0.4"/>
+      <rect x="34" y="33" width="4"  height="10" fill="${shadeHex(shirt,+20)}" opacity="0.4"/>
+      <rect x="21" y="35" width="3"  height="5"  fill="${shirtDark2}" opacity="0.45"/>
+      <rect x="24" y="35" width="3"  height="5"  fill="${shirtDark2}" opacity="0.45"/>`;
+  } else if (archetype === 'nerd') {
+    clothingOverlay = `
+      <rect x="23" y="32" width="2"  height="2"  fill="${shirtDark2}" opacity="0.6"/>
+      <rect x="23" y="35" width="2"  height="2"  fill="${shirtDark2}" opacity="0.6"/>
+      <rect x="23" y="38" width="2"  height="2"  fill="${shirtDark2}" opacity="0.6"/>
+      <rect x="23" y="41" width="2"  height="2"  fill="${shirtDark2}" opacity="0.6"/>
+      <rect x="10" y="43" width="28" height="2"  fill="#4a3020"/>
+      <rect x="22" y="43" width="4"  height="2"  fill="#8a6030"/>
+      <rect x="19" y="30" width="10" height="3"  fill="${shadeHex(shirt,+30)}" opacity="0.6"/>`;
+  } else if (archetype === 'jock') {
+    clothingOverlay = `
+      <rect x="7"  y="30" width="3"  height="15" fill="${shirt}"/>
+      <rect x="38" y="30" width="3"  height="15" fill="${shirt}"/>
+      <rect x="20" y="34" width="2"  height="6"  fill="rgba(255,255,255,0.7)"/>
+      <rect x="22" y="34" width="2"  height="2"  fill="rgba(255,255,255,0.7)"/>
+      <rect x="22" y="38" width="2"  height="2"  fill="rgba(255,255,255,0.7)"/>
+      <rect x="26" y="34" width="2"  height="6"  fill="rgba(255,255,255,0.7)"/>
+      <rect x="3"  y="38" width="8"  height="3"  fill="#f0f0e0"/>
+      <rect x="37" y="38" width="8"  height="3"  fill="#f0f0e0"/>`;
+  } else if (archetype === 'emo') {
+    clothingOverlay = `
+      <rect x="10" y="43" width="28" height="2"  fill="#2a2a2a"/>
+      <rect x="13" y="43" width="2"  height="2"  fill="#b0b0b0"/>
+      <rect x="18" y="43" width="2"  height="2"  fill="#b0b0b0"/>
+      <rect x="23" y="43" width="2"  height="2"  fill="#b0b0b0"/>
+      <rect x="28" y="43" width="2"  height="2"  fill="#b0b0b0"/>
+      <rect x="33" y="43" width="2"  height="2"  fill="#b0b0b0"/>`;
+  } else if (archetype === 'pastel') {
+    clothingOverlay = `
+      <rect x="8"  y="30" width="4"  height="10" rx="2" fill="${shadeHex(shirt,-12)}"/>
+      <rect x="36" y="30" width="4"  height="10" rx="2" fill="${shadeHex(shirt,-12)}"/>
+      <rect x="19" y="29" width="5"  height="3"  fill="#ff80a0"/>
+      <rect x="24" y="29" width="5"  height="3"  fill="#ffa0b8"/>
+      <rect x="22" y="30" width="4"  height="2"  fill="#ffb8c8"/>
+      <rect x="20" y="31" width="2"  height="3"  fill="#ff80a0"/>
+      <rect x="26" y="31" width="2"  height="3"  fill="#ff80a0"/>`;
+  } else if (archetype === 'artsy') {
+    clothingOverlay = `
+      <rect x="14" y="32" width="3"  height="2"  fill="#ff3030"/>
+      <rect x="19" y="36" width="3"  height="2"  fill="#3060ff"/>
+      <rect x="22" y="33" width="2"  height="3"  fill="#f0c000"/>
+      <rect x="28" y="35" width="3"  height="2"  fill="#30c030"/>
+      <rect x="31" y="32" width="2"  height="2"  fill="#ff6000"/>
+      <rect x="16" y="40" width="2"  height="2"  fill="#ff00c0"/>
+      <rect x="26" y="41" width="3"  height="2"  fill="#00c8ff"/>
+      <rect x="33" y="38" width="2"  height="3"  fill="#ff3030"/>
+      <rect x="20" y="42" width="2"  height="2"  fill="#f0c000"/>
+      <rect x="13" y="38" width="2"  height="2"  fill="#3060ff"/>
+      <rect x="4"  y="33" width="3"  height="2"  fill="#ff6000"/>
+      <rect x="5"  y="37" width="2"  height="2"  fill="#30c030"/>
+      <rect x="40" y="34" width="3"  height="2"  fill="#ff3030"/>
+      <rect x="39" y="39" width="2"  height="2"  fill="#f0c000"/>`;
+  } else if (archetype === 'techy') {
+    clothingOverlay = `
+      <rect x="12" y="34" width="24" height="3"  fill="#00a0ff" opacity="0.12"/>
+      <rect x="14" y="37" width="20" height="2"  fill="#00a0ff" opacity="0.07"/>
+      <rect x="21" y="37" width="4"  height="2"  fill="#00d8ff"/>
+      <rect x="22" y="36" width="2"  height="1"  fill="#80ffff" opacity="0.7"/>
+      <rect x="3"  y="38" width="5"  height="4"  fill="#1a2a4a"/>
+      <rect x="4"  y="39" width="3"  height="2"  fill="#0040a0"/>`;
+  } else if (archetype === 'cottagecore') {
+    const ridgeC = shadeHex(shirt, -22);
+    clothingOverlay = `
+      <rect x="10" y="31" width="28" height="2"  fill="${ridgeC}" opacity="0.45"/>
+      <rect x="10" y="34" width="28" height="2"  fill="${ridgeC}" opacity="0.45"/>
+      <rect x="10" y="37" width="28" height="2"  fill="${ridgeC}" opacity="0.45"/>
+      <rect x="10" y="40" width="28" height="2"  fill="${ridgeC}" opacity="0.45"/>
+      <rect x="10" y="43" width="28" height="2"  fill="${ridgeC}" opacity="0.45"/>
+      <rect x="3"  y="32" width="8"  height="2"  fill="${ridgeC}" opacity="0.45"/>
+      <rect x="3"  y="36" width="8"  height="2"  fill="${ridgeC}" opacity="0.45"/>
+      <rect x="3"  y="40" width="8"  height="2"  fill="${ridgeC}" opacity="0.45"/>
+      <rect x="37" y="32" width="8"  height="2"  fill="${ridgeC}" opacity="0.45"/>
+      <rect x="37" y="36" width="8"  height="2"  fill="${ridgeC}" opacity="0.45"/>
+      <rect x="37" y="40" width="8"  height="2"  fill="${ridgeC}" opacity="0.45"/>`;
+  } else if (archetype === 'preppy') {
+    clothingOverlay = `
+      <rect x="10" y="30" width="7"  height="15" fill="${vestC}"/>
+      <rect x="31" y="30" width="7"  height="15" fill="${vestC}"/>
+      <rect x="17" y="38" width="14" height="7"  fill="${vestC}"/>
+      <rect x="17" y="30" width="4"  height="8"  fill="${shirt}" opacity="0.9"/>
+      <rect x="27" y="30" width="4"  height="8"  fill="${shirt}" opacity="0.9"/>
+      <rect x="18" y="30" width="12" height="3"  fill="#e8e8e8"/>
+      <rect x="19" y="30" width="10" height="2"  fill="#f4f4f4"/>`;
   }
+
+  // ── Archetype hat / hair accessory (rendered over hair in head section)
+  let hatSVG = '';
+  if (archetype === 'punk') {
+    // Tall neon mohawk — dramatic silhouette from top of viewbox
+    hatSVG = `
+      <rect x="21" y="0"  width="6"  height="15" fill="${neonC}"/>
+      <rect x="22" y="0"  width="4"  height="11" fill="rgba(255,255,255,0.22)"/>
+      <rect x="20" y="7"  width="8"  height="5"  fill="${neonC}"/>
+      <rect x="19" y="10" width="10" height="4"  fill="${neonC}"/>`;
+  } else if (archetype === 'grunge') {
+    // Messy strand across forehead
+    hatSVG = `
+      <rect x="12" y="12" width="8"  height="2"  fill="${hair}"/>
+      <rect x="13" y="14" width="6"  height="2"  fill="${hair}"/>
+      <rect x="14" y="16" width="5"  height="2"  fill="${hair}" opacity="0.85"/>`;
+  } else if (archetype === 'street') {
+    // Beanie with contrasting fold
+    const bC  = shadeHex(shirt, +28);
+    const bdC = shadeHex(shirt, -15);
+    hatSVG = `
+      <rect x="10" y="2"  width="28" height="11" rx="3" fill="${bC}"/>
+      <rect x="10" y="10" width="28" height="3"  fill="${bdC}"/>
+      <rect x="11" y="3"  width="26" height="2"  fill="rgba(255,255,255,0.12)"/>`;
+  } else if (archetype === 'gangster') {
+    // Flat-brim fitted cap
+    hatSVG = `
+      <rect x="11" y="7"  width="26" height="8"  rx="2" fill="${capC}"/>
+      <rect x="12" y="5"  width="24" height="5"  rx="2" fill="${shadeHex(capC,+18)}"/>
+      <rect x="9"  y="13" width="30" height="2"  fill="${capC}"/>
+      <rect x="8"  y="14" width="32" height="2"  fill="${shadeHex(capC,-8)}"/>
+      <rect x="13" y="7"  width="20" height="1"  fill="rgba(255,255,255,0.07)"/>`;
+  } else if (archetype === 'jock') {
+    // Athletic headband
+    hatSVG = `
+      <rect x="11" y="12" width="26" height="4"  fill="${bandC}"/>
+      <rect x="12" y="12" width="24" height="2"  fill="${shadeHex(bandC,+20)}" opacity="0.5"/>
+      <rect x="12" y="12" width="24" height="1"  fill="rgba(255,255,255,0.2)"/>`;
+  } else if (archetype === 'nerd') {
+    // Big thick-framed glasses — the defining feature
+    hatSVG = `
+      <rect x="14" y="17" width="8"  height="5"  fill="none" stroke="${glassC}" stroke-width="1.5"/>
+      <rect x="26" y="17" width="8"  height="5"  fill="none" stroke="${glassC}" stroke-width="1.5"/>
+      <rect x="22" y="19" width="4"  height="1"  fill="${glassC}"/>
+      <rect x="13" y="19" width="2"  height="1"  fill="${glassC}" opacity="0.6"/>
+      <rect x="34" y="19" width="2"  height="1"  fill="${glassC}" opacity="0.6"/>
+      <rect x="14" y="17" width="1"  height="1"  fill="rgba(255,255,255,0.18)"/>
+      <rect x="26" y="17" width="1"  height="1"  fill="rgba(255,255,255,0.18)"/>`;
+  } else if (archetype === 'emo') {
+    // Side-swept bang covering one eye — the signature
+    hatSVG = `
+      <rect x="11" y="11" width="11" height="3"  fill="${hair}"/>
+      <rect x="12" y="13" width="9"  height="3"  fill="${hair}"/>
+      <rect x="13" y="15" width="8"  height="2"  fill="${hair}"/>
+      <rect x="14" y="17" width="7"  height="2"  fill="${hair}"/>
+      <rect x="15" y="19" width="5"  height="2"  fill="${hair}" opacity="0.75"/>`;
+  } else if (archetype === 'pastel') {
+    // Flower crown — colorful band across head
+    hatSVG = `
+      <rect x="11" y="10" width="2"  height="2"  fill="#ff80a0"/>
+      <rect x="12" y="9"  width="2"  height="2"  fill="#ffb0c8"/>
+      <rect x="16" y="8"  width="2"  height="2"  fill="#ffe060"/>
+      <rect x="15" y="9"  width="2"  height="2"  fill="#ffd040"/>
+      <rect x="21" y="7"  width="2"  height="2"  fill="#c080ff"/>
+      <rect x="20" y="8"  width="2"  height="2"  fill="#d0a0ff"/>
+      <rect x="26" y="7"  width="2"  height="2"  fill="#80e0ff"/>
+      <rect x="25" y="8"  width="2"  height="2"  fill="#a0d8ff"/>
+      <rect x="31" y="8"  width="2"  height="2"  fill="#ff80a0"/>
+      <rect x="30" y="9"  width="2"  height="2"  fill="#ffb0c8"/>
+      <rect x="35" y="10" width="2"  height="2"  fill="#90ff90"/>
+      <rect x="34" y="11" width="2"  height="2"  fill="#70e070"/>`;
+  } else if (archetype === 'artsy') {
+    // Tilted beret (center at x=30, clearly off-center)
+    const beretC = ['#7a3a10','#2a3a8a','#1a6a2a','#6a1a4a'][(idx * 3) % 4];
+    const beretL = shadeHex(beretC, +20);
+    hatSVG = `
+      <ellipse cx="30" cy="5" rx="14" ry="6" fill="${beretC}"/>
+      <ellipse cx="30" cy="5" rx="12" ry="4" fill="${beretL}"/>
+      <rect x="17" y="7"  width="20" height="3"  fill="${shadeHex(beretC,-10)}"/>
+      <rect x="19" y="6"  width="8"  height="2"  fill="rgba(255,255,255,0.1)"/>
+      <rect x="28" y="1"  width="3"  height="3"  fill="${beretC}" rx="1"/>`;
+  } else if (archetype === 'techy') {
+    // Headset — arc over head + earpieces
+    hatSVG = `
+      <rect x="13" y="7"  width="22" height="2"  fill="#c0c8d0"/>
+      <rect x="9"  y="9"  width="5"  height="7"  fill="#c0c8d0"/>
+      <rect x="34" y="9"  width="5"  height="7"  fill="#c0c8d0"/>
+      <rect x="10" y="11" width="4"  height="4"  fill="#383848"/>
+      <rect x="34" y="11" width="4"  height="4"  fill="#383848"/>
+      <rect x="10" y="11" width="1"  height="3"  fill="rgba(255,255,255,0.1)"/>
+      <rect x="34" y="11" width="1"  height="3"  fill="rgba(255,255,255,0.1)"/>`;
+  } else if (archetype === 'cottagecore') {
+    // Flower behind ear
+    hatSVG = `
+      <rect x="33" y="13" width="5"  height="5"  fill="#ff9040"/>
+      <rect x="35" y="11" width="3"  height="4"  fill="#ffb050"/>
+      <rect x="33" y="16" width="3"  height="2"  fill="#ff7030"/>
+      <rect x="36" y="10" width="2"  height="5"  fill="#50a030"/>
+      <rect x="35" y="10" width="1"  height="1"  fill="#70c040"/>`;
+  } else if (archetype === 'preppy' && isFemale) {
+    // Headband
+    const hbC = ['#c03060','#3060c0','#30a860','#c09020'][(idx * 3) % 4];
+    hatSVG = `
+      <rect x="11" y="12" width="26" height="3"  fill="${hbC}"/>
+      <rect x="12" y="12" width="24" height="1"  fill="rgba(255,255,255,0.2)"/>`;
+  }
+
+  // ── Archetype jewelry (earrings + necklace)
+  let arcJewelry = '';
+  if (archetype === 'gangster') {
+    // HEAVIEST gold — huge chain arc + hoop earrings + ring
+    arcJewelry = `
+      <rect x="16" y="32" width="3"  height="2"  fill="#FFD700"/>
+      <rect x="14" y="33" width="3"  height="2"  fill="#FFD700"/>
+      <rect x="16" y="35" width="4"  height="1"  fill="#FFD700"/>
+      <rect x="20" y="36" width="4"  height="2"  fill="#FFD700"/>
+      <rect x="24" y="37" width="2"  height="2"  fill="#FFD700"/>
+      <rect x="26" y="36" width="4"  height="2"  fill="#FFD700"/>
+      <rect x="30" y="35" width="4"  height="1"  fill="#FFD700"/>
+      <rect x="31" y="33" width="3"  height="2"  fill="#FFD700"/>
+      <rect x="29" y="32" width="3"  height="2"  fill="#FFD700"/>
+      <rect x="10" y="20" width="2"  height="1"  fill="#FFD700"/>
+      <rect x="10" y="21" width="1"  height="4"  fill="#FFD700"/>
+      <rect x="11" y="25" width="2"  height="1"  fill="#FFD700"/>
+      <rect x="12" y="21" width="1"  height="4"  fill="#FFD700"/>
+      <rect x="35" y="20" width="2"  height="1"  fill="#FFD700"/>
+      <rect x="35" y="21" width="1"  height="4"  fill="#FFD700"/>
+      <rect x="36" y="25" width="2"  height="1"  fill="#FFD700"/>
+      <rect x="37" y="21" width="1"  height="4"  fill="#FFD700"/>
+      <rect x="3"  y="43" width="4"  height="2"  fill="#FFD700"/>`;
+  } else if (archetype === 'preppy') {
+    // Pearls — white dots clearly visible on skin
+    arcJewelry = isFemale ? `
+      <rect x="10" y="20" width="3"  height="3"  fill="#FFFFFF"/>
+      <rect x="10" y="22" width="3"  height="2"  fill="#F0F0F0"/>
+      <rect x="35" y="20" width="3"  height="3"  fill="#FFFFFF"/>
+      <rect x="35" y="22" width="3"  height="2"  fill="#F0F0F0"/>
+      <rect x="16" y="31" width="2"  height="2"  fill="#FFFFFF"/>
+      <rect x="19" y="30" width="2"  height="2"  fill="#FFFFFF"/>
+      <rect x="22" y="30" width="2"  height="2"  fill="#FFFFFF"/>
+      <rect x="25" y="30" width="2"  height="2"  fill="#FFFFFF"/>
+      <rect x="28" y="30" width="2"  height="2"  fill="#FFFFFF"/>
+      <rect x="31" y="31" width="2"  height="2"  fill="#FFFFFF"/>` : `
+      <rect x="22" y="30" width="4"  height="2"  fill="#c03060"/>
+      <rect x="23" y="29" width="2"  height="4"  fill="#a02050"/>`;
+  } else if (archetype === 'pastel') {
+    // Dangle earrings + heart pendant
+    arcJewelry = isFemale ? `
+      <rect x="10" y="21" width="2"  height="2"  fill="#ff80c0"/>
+      <rect x="11" y="23" width="1"  height="3"  fill="#e060b0"/>
+      <rect x="10" y="26" width="3"  height="2"  fill="#ff90d0"/>
+      <rect x="35" y="21" width="2"  height="2"  fill="#c080ff"/>
+      <rect x="36" y="23" width="1"  height="3"  fill="#b060e0"/>
+      <rect x="35" y="26" width="3"  height="2"  fill="#d090ff"/>
+      <rect x="21" y="32" width="2"  height="2"  fill="#ff6090"/>
+      <rect x="24" y="32" width="2"  height="2"  fill="#ff6090"/>
+      <rect x="20" y="33" width="7"  height="2"  fill="#ff6090"/>
+      <rect x="21" y="35" width="5"  height="1"  fill="#ff6090"/>
+      <rect x="22" y="36" width="3"  height="1"  fill="#ff6090"/>
+      <rect x="22" y="30" width="1"  height="3"  fill="#e080b0"/>
+      <rect x="25" y="30" width="1"  height="3"  fill="#e080b0"/>` : `
+      <rect x="22" y="31" width="4"  height="1"  fill="#d080c0"/>
+      <rect x="21" y="32" width="6"  height="1"  fill="#c070b0"/>`;
+  } else if (archetype === 'formal') {
+    // Gold studs + chain (female) or tie + watch (male)
+    arcJewelry = isFemale ? `
+      <rect x="10" y="20" width="3"  height="3"  fill="#FFD700"/>
+      <rect x="35" y="20" width="3"  height="3"  fill="#FFD700"/>
+      <rect x="19" y="31" width="2"  height="1"  fill="#FFD700"/>
+      <rect x="22" y="30" width="4"  height="1"  fill="#FFD700"/>
+      <rect x="27" y="31" width="2"  height="1"  fill="#FFD700"/>
+      <rect x="3"  y="38" width="5"  height="3"  fill="#FFD700"/>
+      <rect x="4"  y="39" width="3"  height="1"  fill="#c8a000"/>` : `
+      <rect x="22" y="31" width="4"  height="7"  fill="#8a1a2a"/>
+      <rect x="23" y="31" width="2"  height="5"  fill="#a02040"/>
+      <rect x="21" y="37" width="6"  height="3"  fill="#8a1a2a"/>
+      <rect x="3"  y="38" width="5"  height="3"  fill="#FFD700"/>
+      <rect x="4"  y="39" width="3"  height="1"  fill="#c8a000"/>`;
+  } else if (archetype === 'street') {
+    // Gold chain + hoop earring
+    arcJewelry = `
+      <rect x="18" y="32" width="3"  height="2"  fill="#FFD700"/>
+      <rect x="21" y="33" width="3"  height="2"  fill="#FFD700"/>
+      <rect x="24" y="33" width="3"  height="2"  fill="#FFD700"/>
+      <rect x="27" y="32" width="3"  height="2"  fill="#FFD700"/>
+      <rect x="10" y="21" width="2"  height="2"  fill="#FFD700"/>
+      <rect x="10" y="23" width="3"  height="1"  fill="#FFD700"/>`;
+  } else if (archetype === 'punk') {
+    // Silver safety pin + studded choker
+    arcJewelry = `
+      <rect x="10" y="21" width="2"  height="1"  fill="#c0c0c0"/>
+      <rect x="11" y="22" width="1"  height="4"  fill="#c0c0c0"/>
+      <rect x="10" y="26" width="2"  height="1"  fill="#c0c0c0"/>
+      <rect x="15" y="29" width="18" height="2"  fill="#2a2a2a"/>
+      <rect x="16" y="29" width="2"  height="2"  fill="#c0c0c0"/>
+      <rect x="20" y="29" width="2"  height="2"  fill="#c0c0c0"/>
+      <rect x="24" y="29" width="2"  height="2"  fill="#c0c0c0"/>
+      <rect x="28" y="29" width="2"  height="2"  fill="#c0c0c0"/>
+      <rect x="32" y="29" width="2"  height="2"  fill="#c0c0c0"/>`;
+  } else if (archetype === 'emo') {
+    // Multiple ear piercings stacked + black choker
+    arcJewelry = `
+      <rect x="10" y="17" width="2"  height="2"  fill="#9040ff"/>
+      <rect x="10" y="20" width="2"  height="2"  fill="#ff0040"/>
+      <rect x="10" y="23" width="2"  height="2"  fill="#40c0ff"/>
+      <rect x="15" y="29" width="18" height="2"  fill="#1a1a1a"/>
+      <rect x="21" y="29" width="2"  height="2"  fill="#b0b0b0"/>`;
+  } else if (archetype === 'artsy') {
+    // Mismatched earrings — different color each side
+    arcJewelry = isFemale ? `
+      <rect x="10" y="20" width="2"  height="2"  fill="#ff8040"/>
+      <rect x="11" y="22" width="1"  height="3"  fill="#ff6020"/>
+      <rect x="35" y="20" width="2"  height="2"  fill="#4080ff"/>
+      <rect x="36" y="22" width="1"  height="3"  fill="#2060e0"/>
+      <rect x="4"  y="43" width="2"  height="1"  fill="#ff3030"/>
+      <rect x="42" y="43" width="2"  height="1"  fill="#30c030"/>` : `
+      <rect x="10" y="20" width="2"  height="2"  fill="#ff8040"/>
+      <rect x="4"  y="43" width="2"  height="1"  fill="#ff3030"/>`;
+  } else if (archetype === 'cottagecore') {
+    arcJewelry = isFemale ? `
+      <rect x="10" y="20" width="3"  height="3"  fill="#ffb890"/>
+      <rect x="35" y="20" width="3"  height="3"  fill="#ffb890"/>
+      <rect x="21" y="31" width="2"  height="1"  fill="#c09880"/>
+      <rect x="24" y="31" width="2"  height="1"  fill="#c09880"/>` : '';
+  }
+
+  // ── Archetype desk items
+  let leftItems = '', rightItems = '';
+  if (archetype === 'punk') {
+    leftItems = `
+      <rect x="15" y="43" width="3"  height="2"  fill="#ff2040"/>
+      <rect x="19" y="44" width="2"  height="1"  fill="#00ff44"/>
+      <rect x="22" y="43" width="2"  height="2"  fill="#0080ff"/>`;
+    rightItems = `
+      <rect x="39" y="41" width="5"  height="9"  fill="#00e040"/>
+      <rect x="39" y="41" width="5"  height="2"  fill="#00ff50"/>
+      <rect x="40" y="43" width="3"  height="1"  fill="rgba(255,255,255,0.2)"/>
+      <rect x="40" y="42" width="1"  height="1"  fill="rgba(255,255,255,0.3)"/>`;
+  } else if (archetype === 'grunge') {
+    leftItems = `
+      <rect x="1"  y="43" width="7"  height="7"  fill="#2a1a0a"/>
+      <rect x="1"  y="43" width="7"  height="2"  fill="#3a2818"/>
+      <rect x="8"  y="45" width="2"  height="3"  fill="#2a1a0a"/>
+      <rect x="2"  y="44" width="2"  height="1"  fill="rgba(0,0,0,0.4)"/>`;
+    rightItems = `
+      <rect x="37" y="42" width="9"  height="9"  rx="4" fill="#1a1a1a"/>
+      <rect x="40" y="45" width="3"  height="3"  rx="1" fill="#3a3a3a"/>
+      <rect x="41" y="46" width="1"  height="1"  fill="#555"/>`;
+  } else if (archetype === 'formal') {
+    leftItems = `
+      <rect x="1"  y="42" width="10" height="7"  fill="#6a3a18"/>
+      <rect x="2"  y="43" width="8"  height="5"  fill="#7a4a20"/>
+      <rect x="2"  y="43" width="8"  height="1"  fill="#9a6030"/>
+      <rect x="3"  y="45" width="6"  height="1"  fill="rgba(200,160,60,0.2)"/>`;
+    rightItems = `
+      <rect x="39" y="42" width="2"  height="8"  fill="#FFD700" transform="rotate(-12 40 46)"/>
+      <rect x="38" y="42" width="2"  height="2"  fill="#e8c000" transform="rotate(-12 39 43)"/>`;
+  } else if (archetype === 'street') {
+    leftItems = `
+      <rect x="1"  y="43" width="10" height="4"  rx="2" fill="#2a2a2a"/>
+      <rect x="3"  y="42" width="5"  height="3"  fill="#1a1a1a"/>
+      <rect x="1"  y="44" width="4"  height="2"  fill="#383838"/>
+      <rect x="7"  y="44" width="4"  height="2"  fill="#383838"/>`;
+    rightItems = `
+      <rect x="39" y="42" width="6"  height="8"  rx="1" fill="#1a1a1a"/>
+      <rect x="40" y="43" width="4"  height="5"  fill="#80d0ff"/>
+      <rect x="40" y="43" width="4"  height="1"  fill="#c0e8ff"/>`;
+  } else if (archetype === 'casual') {
+    leftItems = `
+      <rect x="1"  y="43" width="7"  height="7"  fill="#a85028"/>
+      <rect x="1"  y="43" width="7"  height="2"  fill="#c06030"/>
+      <rect x="8"  y="45" width="2"  height="3"  fill="#a85028"/>
+      <rect x="2"  y="44" width="2"  height="1"  fill="rgba(255,255,255,0.15)"/>`;
+    rightItems = `
+      <rect x="38" y="44" width="8"  height="4"  fill="#c09040"/>
+      <rect x="38" y="44" width="8"  height="1"  fill="#e0b050"/>`;
+  } else if (archetype === 'gangster') {
+    leftItems = `
+      <rect x="1"  y="44" width="9"  height="5"  fill="#208030"/>
+      <rect x="1"  y="44" width="9"  height="2"  fill="#30a040"/>
+      <rect x="2"  y="45" width="7"  height="1"  fill="rgba(255,255,255,0.1)"/>`;
+    rightItems = `
+      <rect x="38" y="44" width="4"  height="3"  fill="#1a1a1a"/>
+      <rect x="44" y="44" width="4"  height="3"  fill="#1a1a1a"/>
+      <rect x="42" y="45" width="2"  height="1"  fill="#3a3a3a"/>
+      <rect x="38" y="47" width="9"  height="3"  fill="#2a2a2a"/>`;
+  } else if (archetype === 'nerd') {
+    leftItems = `
+      <rect x="1"  y="42" width="10" height="8"  fill="#2848a8"/>
+      <rect x="2"  y="43" width="8"  height="6"  fill="#3858c0"/>
+      <rect x="1"  y="43" width="1"  height="5"  fill="#1a3088"/>
+      <rect x="3"  y="44" width="6"  height="1"  fill="rgba(255,255,255,0.15)"/>`;
+    rightItems = `
+      <rect x="38" y="42" width="9"  height="7"  fill="#c8d0c0"/>
+      <rect x="39" y="43" width="7"  height="2"  fill="#a0a898"/>
+      <rect x="39" y="46" width="2"  height="1"  fill="#888880"/>
+      <rect x="42" y="46" width="2"  height="1"  fill="#888880"/>
+      <rect x="45" y="46" width="1"  height="1"  fill="#888880"/>`;
+  } else if (archetype === 'jock') {
+    leftItems = `
+      <rect x="2"  y="41" width="5"  height="9"  rx="1" fill="#2080e0"/>
+      <rect x="2"  y="41" width="5"  height="2"  fill="#40a0ff"/>
+      <rect x="2"  y="42" width="2"  height="6"  fill="rgba(255,255,255,0.12)"/>`;
+    rightItems = `
+      <rect x="38" y="44" width="9"  height="5"  fill="#e8e0d0"/>
+      <rect x="38" y="44" width="9"  height="2"  fill="#f0e8d8"/>`;
+  } else if (archetype === 'emo') {
+    leftItems = `
+      <rect x="1"  y="42" width="9"  height="7"  fill="#1a1a1a"/>
+      <rect x="2"  y="43" width="7"  height="5"  fill="#2a2a2a"/>
+      <rect x="4"  y="44" width="2"  height="2"  fill="#c02040"/>
+      <rect x="6"  y="44" width="2"  height="2"  fill="#c02040"/>
+      <rect x="3"  y="45" width="6"  height="1"  fill="#c02040"/>`;
+    rightItems = `
+      <rect x="39" y="43" width="7"  height="1"  fill="#2a2a2a"/>
+      <rect x="39" y="44" width="3"  height="3"  rx="1" fill="#1a1a1a"/>
+      <rect x="44" y="44" width="3"  height="3"  rx="1" fill="#1a1a1a"/>`;
+  } else if (archetype === 'pastel') {
+    leftItems = `
+      <rect x="1"  y="43" width="8"  height="6"  fill="#f8c8d8"/>
+      <rect x="2"  y="44" width="3"  height="4"  fill="#e8b0c8"/>
+      <rect x="6"  y="43" width="3"  height="5"  fill="#d8a8c0"/>`;
+    rightItems = `
+      <rect x="37" y="43" width="8"  height="7"  rx="3" fill="#ffb0d0"/>
+      <rect x="39" y="44" width="2"  height="2"  fill="#ff80a8"/>
+      <rect x="43" y="44" width="2"  height="2"  fill="#ff80a8"/>
+      <rect x="39" y="44" width="1"  height="1"  fill="#2a1a1a"/>
+      <rect x="43" y="44" width="1"  height="1"  fill="#2a1a1a"/>
+      <rect x="40" y="47" width="3"  height="1"  fill="#2a1a1a" opacity="0.4"/>`;
+  } else if (archetype === 'artsy') {
+    leftItems = `
+      <rect x="2"  y="45" width="1"  height="5"  fill="#ff4040" transform="rotate(-20 2 50)"/>
+      <rect x="4"  y="44" width="1"  height="5"  fill="#4080ff" transform="rotate(-10 4 49)"/>
+      <rect x="6"  y="43" width="1"  height="5"  fill="#40c040" transform="rotate(0  6 48)"/>
+      <rect x="8"  y="44" width="1"  height="5"  fill="#f0c000" transform="rotate(10  8 49)"/>
+      <rect x="10" y="45" width="1"  height="5"  fill="#ff6000" transform="rotate(20 10 50)"/>`;
+    rightItems = `
+      <rect x="38" y="42" width="9"  height="7"  fill="#fefefe"/>
+      <rect x="38" y="42" width="1"  height="7"  fill="#e0d8c0"/>
+      <rect x="39" y="43" width="7"  height="1"  fill="#2060c0" opacity="0.2"/>
+      <rect x="39" y="45" width="5"  height="1"  fill="#c02020" opacity="0.15"/>
+      <rect x="39" y="47" width="8"  height="3"  rx="1" fill="#d0c0a0"/>
+      <rect x="40" y="47" width="1"  height="2"  fill="#ff3030"/>
+      <rect x="42" y="47" width="1"  height="2"  fill="#4080ff"/>
+      <rect x="44" y="47" width="1"  height="2"  fill="#f0c000"/>`;
+  } else if (archetype === 'techy') {
+    leftItems = `
+      <rect x="1"  y="41" width="12" height="9"  fill="#1a1a2e"/>
+      <rect x="2"  y="42" width="10" height="7"  fill="#0a0a18"/>
+      <rect x="3"  y="43" width="8"  height="1"  fill="#0060ff" opacity="0.6"/>
+      <rect x="3"  y="45" width="5"  height="1"  fill="#0060ff" opacity="0.3"/>`;
+    rightItems = `
+      <rect x="39" y="41" width="5"  height="9"  fill="#00d0ff"/>
+      <rect x="39" y="41" width="5"  height="2"  fill="#80f0ff"/>
+      <rect x="40" y="43" width="3"  height="1"  fill="rgba(255,255,255,0.2)"/>
+      <rect x="40" y="47" width="7"  height="3"  rx="2" fill="#2a2a3a"/>
+      <rect x="42" y="47" width="1"  height="2"  fill="#3a3a4a"/>`;
+  } else if (archetype === 'cottagecore') {
+    leftItems = `
+      <rect x="2"  y="44" width="5"  height="6"  fill="#a87050"/>
+      <rect x="1"  y="44" width="7"  height="1"  fill="#c09068"/>
+      <rect x="3"  y="42" width="1"  height="3"  fill="#508840"/>
+      <rect x="4"  y="41" width="2"  height="4"  fill="#608848"/>
+      <rect x="6"  y="42" width="1"  height="3"  fill="#508840"/>
+      <rect x="3"  y="43" width="1"  height="1"  fill="#ff9090"/>
+      <rect x="6"  y="41" width="1"  height="1"  fill="#ffcc80"/>`;
+    rightItems = `
+      <rect x="38" y="44" width="8"  height="5"  fill="#e8d0b8"/>
+      <rect x="37" y="49" width="10" height="1"  fill="#d0b8a0"/>
+      <rect x="38" y="44" width="8"  height="2"  fill="#f0e0c8"/>
+      <rect x="46" y="46" width="2"  height="2"  fill="#e8d0b8"/>
+      <rect x="43" y="42" width="1"  height="3"  fill="#808060"/>
+      <rect x="43" y="41" width="2"  height="2"  fill="#c0b080"/>`;
+  } else if (archetype === 'preppy') {
+    leftItems = `
+      <rect x="1"  y="42" width="10" height="7"  fill="#f4f4f4"/>
+      <rect x="2"  y="44" width="8"  height="1"  fill="rgba(100,80,40,0.2)"/>
+      <rect x="2"  y="46" width="5"  height="1"  fill="rgba(100,80,40,0.15)"/>
+      <rect x="10" y="42" width="1"  height="7"  fill="#c0b8a8"/>`;
+    rightItems = `
+      <rect x="38" y="46" width="7"  height="5"  fill="#4a7840"/>
+      <rect x="38" y="46" width="9"  height="1"  fill="#5a9050"/>
+      <rect x="40" y="43" width="4"  height="4"  fill="#508848"/>
+      <rect x="41" y="42" width="2"  height="5"  fill="#609050"/>
+      <rect x="40" y="42" width="1"  height="7"  fill="#c8a830" transform="rotate(-5 40 46)"/>`;
+  }
+
+  // ── Pets (~35% of sims, archetype-appropriate)
+  const HAS_PET = new Set([0, 3, 6, 9, 11, 14, 17, 20, 24, 27, 30, 33]);
+  if (HAS_PET.has(idx)) {
+    if (['pastel','emo','grunge','cottagecore','casual','formal'].includes(archetype)) {
+      // Cat
+      rightItems = `
+        <rect x="38" y="43" width="2"  height="2"  fill="${catC}"/>
+        <rect x="43" y="43" width="2"  height="2"  fill="${catC}"/>
+        <rect x="37" y="44" width="7"  height="5"  rx="2" fill="${catC}"/>
+        <rect x="38" y="46" width="2"  height="1"  fill="#1a1a1a"/>
+        <rect x="43" y="46" width="2"  height="1"  fill="#1a1a1a"/>
+        <rect x="40" y="47" width="2"  height="1"  fill="#c06080"/>
+        <rect x="36" y="48" width="9"  height="5"  rx="1" fill="${catC}"/>
+        <rect x="44" y="50" width="4"  height="1"  fill="${catC}"/>
+        <rect x="47" y="49" width="1"  height="2"  fill="${catC}"/>`;
+    } else if (['street','preppy','gangster','jock'].includes(archetype)) {
+      // Dog
+      const dd = shadeHex(dogC, -22);
+      rightItems = `
+        <rect x="36" y="44" width="3"  height="5"  rx="1" fill="${dd}"/>
+        <rect x="44" y="44" width="3"  height="5"  rx="1" fill="${dd}"/>
+        <rect x="38" y="43" width="7"  height="5"  rx="2" fill="${dogC}"/>
+        <rect x="39" y="45" width="2"  height="2"  fill="#1a1a1a"/>
+        <rect x="43" y="45" width="2"  height="2"  fill="#1a1a1a"/>
+        <rect x="39" y="47" width="5"  height="2"  fill="${shadeHex(dogC,+18)}"/>
+        <rect x="41" y="47" width="2"  height="1"  fill="#2a1a1a"/>
+        <rect x="37" y="48" width="9"  height="4"  rx="1" fill="${dogC}"/>
+        <rect x="45" y="46" width="1"  height="4"  fill="${dogC}"/>`;
+    } else if (['artsy','techy'].includes(archetype)) {
+      // Bird perched on monitor
+      rightItems = `
+        <rect x="31" y="37" width="5"  height="4"  rx="2" fill="${birdC}"/>
+        <rect x="32" y="35" width="4"  height="3"  rx="1" fill="${birdC}"/>
+        <rect x="35" y="36" width="2"  height="1"  fill="#e8a020"/>
+        <rect x="33" y="36" width="1"  height="1"  fill="#1a1a1a"/>
+        <rect x="30" y="41" width="3"  height="1"  fill="${shadeHex(birdC,-20)}"/>
+        <rect x="32" y="41" width="1"  height="2"  fill="#c09020"/>
+        <rect x="34" y="41" width="1"  height="2"  fill="#c09020"/>`;
+    } else {
+      // Plant
+      rightItems = `
+        <rect x="39" y="47" width="6"  height="4"  fill="#a87050"/>
+        <rect x="38" y="47" width="8"  height="1"  fill="#c09068"/>
+        <rect x="39" y="44" width="2"  height="3"  fill="#508840"/>
+        <rect x="41" y="43" width="3"  height="4"  fill="#608848"/>
+        <rect x="43" y="44" width="2"  height="3"  fill="#508840"/>`;
+    }
+  }
+
+  // ── Desk surface color per archetype
+  const DESK_COLORS = {
+    punk:        ['#222222','#2e2e2e'],
+    grunge:      ['#4A4A2A','#5a5a38'],
+    formal:      ['#3A1008','#4a2010'],
+    street:      ['#707070','#828282'],
+    casual:      ['#B07828','#c88838'],
+    gangster:    ['#2A2A2A','#3a3a3a'],
+    nerd:        ['#B8B8C8','#c8c8d8'],
+    jock:        ['#C09040','#d0a050'],
+    emo:         ['#111111','#1e1e1e'],
+    pastel:      ['#E8A0B8','#f0b0c8'],
+    artsy:       ['#C87040','#d88050'],
+    techy:       ['#161630','#202040'],
+    cottagecore: ['#90A878','#a0b888'],
+    preppy:      ['#D0B888','#e0c898'],
+  };
+  const dPair       = DESK_COLORS[archetype] || DESK_COLORS.casual;
+  const deskSurface  = dPair[0];
+  const deskSurface2 = dPair[1];
+  const deskGlow     = archetype === 'techy'
+    ? `<rect x="0" y="50" width="48" height="2" fill="#00E5FF" opacity="0.25"/>`
+    : archetype === 'gangster'
+    ? `<rect x="0" y="41" width="48" height="1" fill="#FFD700" opacity="0.35"/>`
+    : archetype === 'pastel'
+    ? `<rect x="0" y="50" width="48" height="1" fill="#ff80a8" opacity="0.12"/>`
+    : '';
 
   // Build the full character SVG
   return `<svg viewBox="0 0 48 64" width="72" height="96" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
@@ -1293,13 +1904,13 @@ function studentSVG(simId, mood, idx, personality = 'casual', active = false) {
   <!-- Body accessory (tie for trend) -->
   ${personality === 'trend' ? accessory : ''}
 
-  <!-- Necklace (some female characters) -->
-  ${necklace}
+  <!-- Archetype clothing overlay -->
+  ${clothingOverlay}
 
   <!-- ── DESK ── -->
   <!-- Desk surface with wood grain -->
-  <rect x="0" y="41" width="48" height="10" fill="#b07828"/>
-  <rect x="0" y="41" width="48" height="1" fill="#c88838"/>
+  <rect x="0" y="41" width="48" height="10" fill="${deskSurface}"/>
+  <rect x="0" y="41" width="48" height="1" fill="${deskSurface2}"/>
   <rect x="0" y="44" width="48" height="1" fill="rgba(0,0,0,0.06)"/>
   <rect x="0" y="47" width="48" height="1" fill="rgba(0,0,0,0.04)"/>
   <!-- Grain lines -->
@@ -1310,6 +1921,7 @@ function studentSVG(simId, mood, idx, personality = 'casual', active = false) {
   <rect x="0" y="51" width="48" height="5" fill="#6a3810"/>
   <rect x="0" y="51" width="48" height="1" fill="#7a4818"/>
   <rect x="0" y="55" width="48" height="1" fill="rgba(0,0,0,0.25)"/>
+  ${deskGlow}
   <!-- Desk legs (pixel style) -->
   <rect x="2" y="56" width="4" height="6" fill="#5a3010"/>
   <rect x="42" y="56" width="4" height="6" fill="#5a3010"/>
@@ -1363,6 +1975,12 @@ function studentSVG(simId, mood, idx, personality = 'casual', active = false) {
   <!-- Head accessory (glasses, headband) -->
   ${personality !== 'trend' ? accessory : ''}
 
+  <!-- Archetype hat / hair piece -->
+  ${hatSVG}
+
+  <!-- Archetype jewelry (earrings, necklace) -->
+  ${arcJewelry}
+
   <!-- ── SHADOW ── -->
   <ellipse cx="24" cy="62" rx="18" ry="2" fill="rgba(0,0,0,0.12)"/>
 </svg>`;
@@ -1385,8 +2003,10 @@ function sleepingSVG(idx) {
     Math.min(255, Math.max(0, parseInt(h, 16) + d)).toString(16).padStart(2, '0'));
   const hairDark    = shadeHex(hair, -28);
   const hairLight   = shadeHex(hair, +22);
-  const blanketFold = shadeHex(shirt, +28);  // lighter fold at top
-  const blanketDark = shadeHex(shirt, -40);  // stripe lines
+  const sleepArch   = SIM_STYLES[idx] || 'casual';
+  const blanketBase = ARCHETYPE_BLANKETS[sleepArch] || shirt;
+  const blanketFold = shadeHex(blanketBase, +28);  // lighter fold at top
+  const blanketDark = shadeHex(blanketBase, -40);  // stripe lines
 
   // Hair cap only — no long strands (head resting on pillow, strands tucked)
   let hairCap = '';
@@ -1436,13 +2056,26 @@ function sleepingSVG(idx) {
   <rect x="8" y="36" width="32" height="5" fill="${blanketFold}"/>
   <rect x="8" y="36" width="32" height="1" fill="rgba(255,255,255,0.22)"/>
   <!-- Main blanket body -->
-  <rect x="8" y="40" width="32" height="16" fill="${shirt}"/>
+  <rect x="8" y="40" width="32" height="16" fill="${blanketBase}"/>
   <!-- Horizontal stripe texture -->
   <rect x="8" y="42" width="32" height="1" fill="${blanketDark}" opacity="0.2"/>
   <rect x="8" y="45" width="32" height="1" fill="${blanketDark}" opacity="0.2"/>
   <rect x="8" y="48" width="32" height="1" fill="${blanketDark}" opacity="0.2"/>
   <rect x="8" y="51" width="32" height="1" fill="${blanketDark}" opacity="0.2"/>
   <rect x="8" y="54" width="32" height="1" fill="${blanketDark}" opacity="0.2"/>
+  ${sleepArch === 'grunge' ? `
+  <rect x="8" y="40" width="32" height="3" fill="${shadeHex(blanketBase,+18)}"/>
+  <rect x="8" y="43" width="32" height="3" fill="${shadeHex(blanketBase,-22)}"/>
+  <rect x="8" y="46" width="32" height="3" fill="${shadeHex(blanketBase,+18)}"/>
+  <rect x="8" y="49" width="32" height="3" fill="${shadeHex(blanketBase,-22)}"/>
+  <rect x="8" y="52" width="32" height="3" fill="${shadeHex(blanketBase,+18)}"/>` : ''}
+  ${sleepArch === 'pastel' ? `
+  <rect x="9"  y="28" width="7" height="7" rx="3" fill="#ffb0d0"/>
+  <rect x="11" y="29" width="2" height="2" fill="#ff80a8"/>
+  <rect x="14" y="29" width="2" height="2" fill="#ff80a8"/>
+  <rect x="11" y="29" width="1" height="1" fill="#2a1a1a"/>
+  <rect x="14" y="29" width="1" height="1" fill="#2a1a1a"/>
+  <rect x="11" y="31" width="4" height="1" fill="#2a1a1a" opacity="0.3"/>` : ''}
   <!-- Blanket right-edge shadow -->
   <rect x="39" y="36" width="1" height="20" fill="rgba(0,0,0,0.09)"/>
 
@@ -1851,8 +2484,7 @@ function switchDrawerTab(name, btn) {
   if (btn) btn.classList.add('active');
   // Render perf chart lazily when that tab is opened
   if (name === 'overview' && perfChart === null && currentSimId) {
-    const bh = document._drawerBalanceHistory || [];
-    setTimeout(() => renderPerfChart(bh, document._drawerBalanceStart), 50);
+    setTimeout(() => renderWinRateChart(document._drawerWinRateChart || { runs: [] }), 50);
   }
 }
 
@@ -1872,28 +2504,10 @@ function populateDrawer(d) {
   // Store for lazy chart render
   document._drawerBalanceHistory = d.balance_history || [];
   document._drawerBalanceStart   = stats.balance_start;
+  document._drawerWinRateChart   = d.win_rate_chart || { runs: [] };
 
   // ── OVERVIEW TAB ──
   const ov = document.getElementById('dpanel-overview');
-  // Per-symbol breakdown rows
-  const symStats = stats.symbol_stats || {};
-  const symRows = Object.entries(symStats).sort((a,b) => b[1].trades - a[1].trades).map(([sym, ss]) => {
-    const pc = ss.pnl > 0 ? 'pos' : ss.pnl < 0 ? 'neg' : '';
-    const sign = ss.pnl > 0 ? '+' : '';
-    const wr = ss.win_rate != null ? ss.win_rate + '%' : '—';
-    return `<tr class="sym-row">
-      <td><span class="sym-badge sym-${sym}">${sym}</span></td>
-      <td>${ss.trades}</td>
-      <td class="${pc}">${sign}$${fmt2(ss.pnl)}</td>
-      <td>${wr}</td>
-    </tr>`;
-  }).join('');
-  const symTable = symRows ? `
-    <div class="sym-breakdown">
-      <div class="sym-breakdown-title">By Symbol</div>
-      <table class="sym-table"><thead><tr><th>Symbol</th><th>Trades</th><th>P&L</th><th>WR</th></tr></thead>
-      <tbody>${symRows}</tbody></table>
-    </div>` : '';
 
   const sess = stats.session || {};
   const sessPnlCls = sess.pnl > 0 ? 'pos' : sess.pnl < 0 ? 'neg' : '';
@@ -1926,10 +2540,10 @@ function populateDrawer(d) {
               stats.worst_trade < 0 ? 'neg' : '')}
       ${dStat('Daily P&L', '$' + fmt2(stats.daily_loss), '', stats.daily_loss < 0 ? 'neg' : '')}
     </div>
-    ${symTable}
+    <div class="session-label" style="padding:0 0 6px 2px;margin-top:12px">WIN RATE PROGRESSION</div>
     <div class="drawer-chart-wrap"><div id="perf-chart"></div></div>
   `;
-  setTimeout(() => renderPerfChart(d.balance_history || [], stats.balance_start), 60);
+  setTimeout(() => renderWinRateChart(d.win_rate_chart || { runs: [] }), 60);
 
   // ── ACTIVE TRADE TAB ──
   const openTrades = d.open_trades && d.open_trades.length ? d.open_trades
@@ -2099,67 +2713,82 @@ function tdDetail(label, val, cls = '') {
   </div>`;
 }
 
-function renderPerfChart(balanceHistory, startBalance) {
+function renderWinRateChart(winRateChart) {
   if (perfChart) { perfChart.destroy(); perfChart = null; }
   const el = document.getElementById('perf-chart');
   if (!el) return;
 
-  const data = (balanceHistory || []).map(p => p.balance);
+  const runs = (winRateChart || {}).runs || [];
+  const validRuns = runs.filter(r => r.points && r.points.length > 0);
 
-  if (!data.length) {
-    el.innerHTML = '<div style="padding:20px;text-align:center;color:#888;font-size:12px">No completed trades yet</div>';
+  if (!validRuns.length) {
+    el.innerHTML = '<div style="padding:20px;text-align:center;color:#888;font-size:12px">No trades yet</div>';
     return;
   }
 
-  const times = (balanceHistory || []).map(p => new Date(p.time).getTime());
-  const allValues = startBalance != null ? [startBalance, ...data] : data;
-  const minVal = Math.min(...allValues);
-  const maxVal = Math.max(...allValues);
+  const hasMultipleRuns = validRuns.length > 1;
+  const maxTrades = Math.max(...validRuns.map(r => r.points.length));
+
+  const series = validRuns.map(run => ({
+    name: run.is_current ? 'Current Run' : `Run #${run.run_number} (ended)`,
+    data: run.points.map(p => ({ x: p.trade_num, y: p.win_rate })),
+  }));
+
+  const colors = validRuns.map(run => run.is_current ? '#4f8ef7' : 'rgba(79,142,247,0.35)');
+  const strokeWidths = validRuns.map(run => run.is_current ? 2.5 : 1.5);
 
   perfChart = new ApexCharts(el, {
     chart: {
-      type: 'area',
+      type: 'line',
       height: 160,
       background: 'transparent',
       toolbar: { show: false },
       animations: { enabled: false },
       foreColor: '#888',
-      sparkline: { enabled: false },
     },
-    series: [{ name: 'Balance', data: times.map((t, i) => ({ x: t, y: data[i] })) }],
-    stroke: { curve: 'smooth', width: 2 },
-    fill: {
-      type: 'gradient',
-      gradient: { shadeIntensity: 1, opacityFrom: 0.15, opacityTo: 0.01, stops: [0, 100] },
-    },
-    colors: ['#4f8ef7'],
+    series,
+    stroke: { curve: 'smooth', width: strokeWidths },
+    colors,
     xaxis: {
-      type: 'datetime',
+      type: 'numeric',
+      tickAmount: Math.min(10, maxTrades - 1),
       labels: {
         style: { colors: '#64748b', fontSize: '9px' },
-        datetimeUTC: false,
-        datetimeFormatter: { hour: 'HH:mm', minute: 'HH:mm' },
+        formatter: v => Number.isInteger(+v) ? String(Math.round(v)) : '',
       },
       axisBorder: { show: false },
       axisTicks: { show: false },
     },
     yaxis: {
+      min: 0,
+      max: 100,
+      tickAmount: 5,
       labels: {
         style: { colors: '#64748b', fontSize: '9px' },
-        formatter: v => '$' + (v || 0).toFixed(0),
+        formatter: v => v + '%',
       },
-      min: minVal * 0.998,
-      max: maxVal * 1.002,
     },
     grid: { borderColor: 'rgba(0,0,0,0.08)', strokeDashArray: 4 },
     tooltip: {
       theme: 'light',
-      x: { format: 'HH:mm' },
-      y: { formatter: v => '$' + (v || 0).toFixed(2) },
+      x: { formatter: v => 'Trade #' + Math.round(v) },
+      y: {
+        formatter: (v, { seriesIndex }) => {
+          const run = validRuns[seriesIndex];
+          const label = run.is_current ? 'Win Rate' : `Run #${run.run_number} WR`;
+          return label + ': ' + (v || 0).toFixed(1) + '%';
+        },
+      },
     },
-    legend: { show: false },
+    legend: {
+      show: hasMultipleRuns,
+      position: 'top',
+      horizontalAlign: 'right',
+      fontSize: '9px',
+      labels: { colors: '#888' },
+    },
     dataLabels: { enabled: false },
-    markers: { size: data.length <= 30 ? 3 : 0, hover: { size: 5 } },
+    markers: { size: maxTrades <= 30 ? 3 : 0, hover: { size: 5 } },
   });
   perfChart.render();
 }

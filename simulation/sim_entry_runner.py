@@ -3,6 +3,7 @@ simulation/sim_entry_runner.py
 Entry loop for paper and live simulation trades.
 Extracted from sim_engine.py to reduce file size.
 """
+import asyncio
 import logging
 import random
 
@@ -34,7 +35,8 @@ from simulation.sim_entry_helpers import (
 
 async def run_sim_entries(
     df,
-    regime: "str | None" = None
+    regime: "str | None" = None,
+    trader_signal: "dict | None" = None,
 ) -> list[dict]:
     _PROFILES, _GLOBAL_CONFIG = _get_profiles_and_global()
     results = []
@@ -67,7 +69,7 @@ async def run_sim_entries(
         if _sym in _sym_df_cache:
             continue
         try:
-            _cached = get_symbol_dataframe(_sym)
+            _cached = await asyncio.to_thread(get_symbol_dataframe, _sym)
             if _cached is not None and len(_cached) > 30:
                 _sym_df_cache[_sym] = _cached
         except Exception:
@@ -122,11 +124,48 @@ async def run_sim_entries(
                 _fallback = profile.get("symbol", "SPY")
                 _sim_symbols = [_fallback] if _fallback else ["SPY"]
             _sim_symbols = list(_sim_symbols)
-            random.shuffle(_sim_symbols)
+
+            # Filter symbols by DTE compatibility
+            _dte_max = profile.get("dte_max", 7)
+            _DAILY_OPTS = {"SPY", "QQQ", "IWM"}   # have options every weekday
+            _WEEKLY_ONLY = {"VXX"}                  # weekly (Friday) expiry only
+            if _dte_max == 0:
+                # 0DTE: only symbols with daily options
+                _filtered = [s for s in _sim_symbols if str(s).upper() in _DAILY_OPTS]
+                if _filtered:
+                    _sim_symbols = _filtered
+            elif _dte_max < 4:
+                # Short DTE (1-3): VXX has weekly-only options — skip on non-Friday days
+                from datetime import datetime as _dt
+                import pytz as _pytz
+                _today_dow = _dt.now(_pytz.timezone("America/New_York")).weekday()
+                if _today_dow != 4:  # 4 = Friday
+                    _sim_symbols = [s for s in _sim_symbols if str(s).upper() not in _WEEKLY_ONLY]
+            elif _dte_max > 7:
+                # Long DTE: skip VXX (no monthly options)
+                _sim_symbols = [s for s in _sim_symbols if str(s).upper() not in _WEEKLY_ONLY]
+
+            # Liquid symbols (SPY, QQQ, IWM) first — always have options; shuffle within each tier
+            _liquid = [s for s in _sim_symbols if str(s).upper() in _DAILY_OPTS]
+            _others = [s for s in _sim_symbols if str(s).upper() not in _DAILY_OPTS]
+            random.shuffle(_liquid)
+            random.shuffle(_others)
+            _sim_symbols = _liquid + _others
 
             # ── Loop over each symbol this sim trades ────────────────────
+            _results_before_sym_loop = len(results)
             for _trade_symbol in _sim_symbols:
                 _trade_symbol = str(_trade_symbol).upper()
+
+                # Stop trying more symbols once this sim has opened a trade
+                # this cycle — avoids spurious empty_chain/no_contract
+                # notifications for symbols that have no options (e.g. VXX
+                # on non-expiry days) after a trade was already placed.
+                if any(
+                    r.get("sim_id") == sim_id and r.get("status") == "opened"
+                    for r in results[_results_before_sym_loop:]
+                ):
+                    break
 
                 # Reload sim state so open_trades reflects any entries made
                 # earlier in this symbol loop iteration
@@ -137,7 +176,7 @@ async def run_sim_entries(
                 sim_df = _sym_df_cache.get(_trade_symbol)
                 if sim_df is None:
                     try:
-                        sim_df = get_symbol_dataframe(_trade_symbol)
+                        sim_df = await asyncio.to_thread(get_symbol_dataframe, _trade_symbol)
                         if sim_df is not None and len(sim_df) > 30:
                             _sym_df_cache[_trade_symbol] = sim_df
                         else:
@@ -155,6 +194,162 @@ async def run_sim_entries(
                 effective_profile = dict(profile)
 
                 # ── 1. Derive signal FIRST ──────────────────────────────
+                # Special path for OPPORTUNITY mode: use the ranker
+                if str(signal_mode).upper() == "OPPORTUNITY":
+                    try:
+                        from simulation.sim_signals import derive_opportunity_signal
+                        _opp_dir, _opp_price, _opp_meta = await asyncio.to_thread(
+                            derive_opportunity_signal,
+                            sim_df,
+                            {},  # sim_states not available here; ranker uses trade logs internally
+                            regime,
+                            trader_signal=trader_signal,
+                        )
+                        direction = _opp_dir
+                        underlying_price = _opp_price
+                        signal_meta = _opp_meta
+                    except Exception:
+                        logging.exception("opportunity_signal_error: sim=%s", sim_id)
+                        direction = None
+                        underlying_price = None
+                        signal_meta = {"reason": "opportunity_signal_error"}
+
+                    # Apply DTE/hold overrides from ranker result
+                    if isinstance(signal_meta, dict):
+                        dte_min_override = signal_meta.get("recommended_dte_min")
+                        dte_max_override = signal_meta.get("recommended_dte_max")
+                        hold_max_override = signal_meta.get("recommended_hold_max_minutes")
+                        if dte_min_override is not None:
+                            effective_profile["dte_min"] = int(dte_min_override)
+                        if dte_max_override is not None:
+                            effective_profile["dte_max"] = int(dte_max_override)
+                        if hold_max_override is not None:
+                            effective_profile["hold_max_seconds"] = int(hold_max_override) * 60
+
+                    if direction is None or underlying_price is None:
+                        reason = "no_opportunity_above_threshold"
+                        if isinstance(signal_meta, dict) and signal_meta.get("reason"):
+                            reason = signal_meta.get("reason")
+                        results.append({
+                            "sim_id": sim_id,
+                            "status": "skipped",
+                            "reason": reason,
+                            "signal_mode": signal_mode,
+                        })
+                        continue
+
+                    # Skip the standard signal derivation path below (jump to entry context)
+                    # We still need: entry_context, cross-sim guards, ml prediction
+                    entry_context = (
+                        f"signal_mode={signal_mode} | regime={regime or 'N/A'} | bucket={time_of_day_bucket or 'N/A'}"
+                    )
+                    if isinstance(signal_meta, dict):
+                        winning_mode = signal_meta.get("winning_mode")
+                        score = signal_meta.get("composite_score")
+                        if winning_mode:
+                            entry_context += f" | winning_mode={winning_mode}"
+                        if score is not None:
+                            entry_context += f" | score={score:.1f}"
+                        if signal_meta.get("reason"):
+                            entry_context += f" | reason={signal_meta.get('reason')}"
+
+                    # Cross-sim directional exposure guard
+                    global_config = _GLOBAL_CONFIG
+                    if global_config.get("cross_sim_guard_enabled", False):
+                        try:
+                            max_dir_sims = int(global_config.get("max_directional_sims", 4))
+                        except (TypeError, ValueError):
+                            max_dir_sims = 4
+                        current_dir_count = _count_directional_exposure(direction, _trade_symbol)
+                        if current_dir_count >= max_dir_sims:
+                            results.append({
+                                "sim_id": sim_id,
+                                "status": "skipped",
+                                "reason": "directional_exposure_limit",
+                                "direction": direction,
+                                "symbol": _trade_symbol,
+                                "current_count": current_dir_count,
+                                "max_allowed": max_dir_sims,
+                                "entry_context": entry_context,
+                                "signal_mode": signal_mode,
+                            })
+                            continue
+
+                    # ML prediction
+                    from datetime import datetime
+                    import pytz
+                    ml_context = {
+                        "direction": direction,
+                        "price": underlying_price,
+                        "regime": regime,
+                        "horizon": effective_profile.get("horizon"),
+                        "timestamp": datetime.now(pytz.timezone("US/Eastern")).isoformat(),
+                    }
+                    ml_prediction = await asyncio.to_thread(predict_sim_trade, sim_df, ml_context)
+
+                    # Inject opportunity_meta into signal_meta for embed later
+                    if isinstance(signal_meta, dict):
+                        signal_meta["opportunity_meta"] = {
+                            "winning_mode": signal_meta.get("winning_mode"),
+                            "composite_score": signal_meta.get("composite_score"),
+                            "breakdown": signal_meta.get("breakdown"),
+                            "num_candidates": len(signal_meta.get("competing_candidates", [])),
+                        }
+
+                    regime_filter = sim.profile.get("regime_filter")
+                    if regime_filter is not None:
+                        filtered_out = False
+                        if isinstance(regime_filter, list):
+                            filtered_out = regime not in regime_filter
+                        elif regime_filter == "TREND_ONLY":
+                            filtered_out = regime != "TREND"
+                        elif regime_filter == "RANGE_ONLY":
+                            filtered_out = regime != "RANGE"
+                        elif regime_filter == "VOLATILE_ONLY":
+                            filtered_out = regime != "VOLATILE"
+                        if filtered_out:
+                            results.append({
+                                "sim_id": sim_id,
+                                "status": "skipped",
+                                "reason": "regime_filter",
+                                "entry_context": entry_context,
+                                "signal_mode": signal_mode,
+                            })
+                            continue
+
+                    _opp_meta_for_embed = signal_meta.get("opportunity_meta") if isinstance(signal_meta, dict) else None
+                    _results_len_before = len(results)
+                    execution_mode = sim.profile.get("execution_mode")
+                    if execution_mode == "live":
+                        await _execute_live_entry(
+                            sim=sim, sim_id=sim_id, profile=profile,
+                            _PROFILES=_PROFILES, direction=direction,
+                            underlying_price=underlying_price,
+                            ml_prediction=ml_prediction, regime=regime,
+                            time_of_day_bucket=time_of_day_bucket,
+                            signal_mode=signal_mode, entry_context=entry_context,
+                            feature_snapshot=None,
+                            _trade_symbol=_trade_symbol,
+                            effective_profile=effective_profile, results=results,
+                        )
+                    else:
+                        await _execute_paper_entry(
+                            sim=sim, sim_id=sim_id, profile=profile,
+                            direction=direction, underlying_price=underlying_price,
+                            ml_prediction=ml_prediction, regime=regime,
+                            time_of_day_bucket=time_of_day_bucket,
+                            signal_mode=signal_mode, entry_context=entry_context,
+                            feature_snapshot=None,
+                            _trade_symbol=_trade_symbol,
+                            effective_profile=effective_profile, df=sim_df, results=results,
+                        )
+                    # Attach opportunity_meta to the newly-appended result (for embed)
+                    if _opp_meta_for_embed and sim_id == "SIM09":
+                        for _r in results[_results_len_before:]:
+                            if isinstance(_r, dict) and _r.get("status") in ("opened", "live_submitted"):
+                                _r["opportunity_meta"] = _opp_meta_for_embed
+                    continue  # Done with this symbol for OPPORTUNITY mode
+
                 feature_snapshot = None
                 if profile.get("features_enabled"):
                     try:
@@ -176,7 +371,8 @@ async def run_sim_entries(
                     except Exception:
                         feature_snapshot = None
 
-                sig = derive_sim_signal(
+                sig = await asyncio.to_thread(
+                    derive_sim_signal,
                     sim_df,
                     signal_mode,
                     {
@@ -298,7 +494,7 @@ async def run_sim_entries(
                     "horizon": effective_profile.get("horizon"),
                     "timestamp": datetime.now(pytz.timezone("US/Eastern")).isoformat(),
                 }
-                ml_prediction = predict_sim_trade(df, ml_context)
+                ml_prediction = await asyncio.to_thread(predict_sim_trade, df, ml_context)
 
                 # ── 6. Continue with regime_filter, execution_mode, etc. ─
                 regime_filter = sim.profile.get("regime_filter")
@@ -321,6 +517,35 @@ async def run_sim_entries(
                             "signal_mode": signal_mode,
                         })
                         continue
+
+                # ── A-tier quality gate (no-op if quality_filters absent or empty) ──────────
+                quality_filters = effective_profile.get("quality_filters", {})
+                if quality_filters:
+                    try:
+                        from simulation.trade_analyzer import check_quality_gate
+                        _ml_grade_val = _trade_grade({
+                            "edge_prob": ml_prediction.get("edge_prob") if isinstance(ml_prediction, dict) else None,
+                            "prediction_confidence": ml_prediction.get("confidence") if isinstance(ml_prediction, dict) else None,
+                        }) if ml_prediction else None
+                        _qf_skip = check_quality_gate(
+                            quality_filters=quality_filters,
+                            direction=direction,
+                            regime=regime,
+                            time_bucket=time_of_day_bucket,
+                            ml_grade=_ml_grade_val,
+                            signal_mode=signal_mode,
+                        )
+                        if _qf_skip:
+                            results.append({
+                                "sim_id": sim_id,
+                                "status": "skipped",
+                                "reason": f"quality_filter:{_qf_skip}",
+                                "entry_context": entry_context,
+                                "signal_mode": signal_mode,
+                            })
+                            continue
+                    except Exception as _qf_exc:
+                        logging.debug("quality_gate_error: %s", _qf_exc)
 
                 execution_mode = sim.profile.get("execution_mode")
                 if execution_mode == "live":

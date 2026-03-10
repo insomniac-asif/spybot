@@ -1,6 +1,7 @@
 # INTERFACE LAYER — Entry Point
 
 import os, asyncio, json, logging, discord
+from logging.handlers import RotatingFileHandler
 from discord.ext import commands
 from dotenv import load_dotenv
 from interface.health_monitor import start_heartbeat
@@ -26,8 +27,15 @@ from interface.shared_state import (
     HEART_CHANNEL_ID, EOD_REPORT_CHANNEL_ID, _send_embed,
 )
 
-logging.basicConfig(filename="system.log", level=logging.ERROR,
-                    format="%(asctime)s %(levelname)s:%(message)s")
+_sys_handler = RotatingFileHandler(
+    "system.log",
+    maxBytes=5 * 1024 * 1024,  # 5 MB per file
+    backupCount=3,              # keep system.log.1, .2, .3
+)
+_sys_handler.setLevel(logging.ERROR)
+_sys_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s:%(message)s"))
+logging.getLogger().setLevel(logging.ERROR)
+logging.getLogger().addHandler(_sys_handler)
 load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 if not DISCORD_TOKEN or not DISCORD_TOKEN.strip():

@@ -53,7 +53,7 @@ async def _symbol_snapshot(ctx, symbol: str):
                 df = df[df.index.date == today.date()]
         # For SPY fall back to get_market_dataframe
         if (df is None or df.empty) and symbol == "SPY":
-            df = get_market_dataframe()
+            df = await asyncio.to_thread(get_market_dataframe)
         if df is None or df.empty:
             await _send_embed(ctx, f"No data for {symbol} — run `!backfill 5 {symbol.lower()}` first.")
             return

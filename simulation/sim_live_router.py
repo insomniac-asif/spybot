@@ -270,7 +270,7 @@ async def manage_live_exit(sim, trade):
         if not force_exit and elapsed_seconds < hold_min_seconds:
             return {"status": "skipped", "message": "hold_min"}
 
-        current_price = get_option_price(option_symbol)
+        current_price = await asyncio.to_thread(get_option_price, option_symbol)
         if current_price is None:
             logging.warning("sim_live_exit_missing_price: %s", trade.get("trade_id"))
             return {"status": "error", "message": "missing_price"}

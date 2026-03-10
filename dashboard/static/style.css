@@ -834,6 +834,16 @@ html, body {
   animation: zzz-float 3s ease-in-out infinite;
 }
 
+/* Cat tail gentle sway */
+@keyframes cat-tail {
+  0%,100% { transform: rotate(0deg); }
+  50%      { transform: rotate(14deg); }
+}
+.cat-tail {
+  transform-origin: 44px 49px;
+  animation: cat-tail 4s ease-in-out infinite;
+}
+
 /* Bench row label */
 .strategy-label-bench {
   color: rgba(58,32,16,0.25);
@@ -962,6 +972,52 @@ html, body {
   text-overflow: ellipsis;
   max-width: 100%;
 }
+
+/* ════════════════════════════════════════ ARCHETYPE BADGE */
+.archetype-badge {
+  font-size: 7px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  margin-top: 2px;
+  display: inline-block;
+  opacity: 0.88;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.archetype-badge-punk        { background: #1a1a1a; color: #39FF14; }
+.archetype-badge-grunge      { background: #5a0000; color: #f0c0b0; }
+.archetype-badge-formal      { background: #2a2a3e; color: #DAA520; }
+.archetype-badge-street      { background: #FF8C00; color: #1a1a1a; }
+.archetype-badge-casual      { background: #4682B4; color: #e0f0ff; }
+.archetype-badge-gangster    { background: #3a006a; color: #FFD700; }
+.archetype-badge-nerd        { background: #87CEEB; color: #1a2a4a; }
+.archetype-badge-jock        { background: #E03030; color: #ffffff; }
+.archetype-badge-emo         { background: #2D0040; color: #c080ff; }
+.archetype-badge-pastel      { background: #FFB6C1; color: #6a2060; }
+.archetype-badge-artsy       { background: #FFD700; color: #3a1a00; }
+.archetype-badge-techy       { background: #161630; color: #00E5FF; }
+.archetype-badge-cottagecore { background: #8FBC8F; color: #2a4020; }
+.archetype-badge-preppy      { background: #1E3A5F; color: #D0B888; }
+
+/* ════════════════════════════════════════ ARCHETYPE SEAT GLOW */
+.seat[data-archetype="punk"]        { box-shadow: 0 0 8px 2px #39FF1440; }
+.seat[data-archetype="grunge"]      { box-shadow: 0 0 8px 2px #80002040; }
+.seat[data-archetype="formal"]      { box-shadow: 0 0 8px 2px #DAA52040; }
+.seat[data-archetype="street"]      { box-shadow: 0 0 8px 2px #FF8C0040; }
+.seat[data-archetype="gangster"]    { box-shadow: 0 0 8px 2px #FFD70040; }
+.seat[data-archetype="nerd"]        { box-shadow: 0 0 8px 2px #4488CC40; }
+.seat[data-archetype="jock"]        { box-shadow: 0 0 8px 2px #E0303040; }
+.seat[data-archetype="emo"]         { box-shadow: 0 0 8px 2px #8B00FF40; }
+.seat[data-archetype="pastel"]      { box-shadow: 0 0 8px 2px #FFB6C140; }
+.seat[data-archetype="artsy"]       { box-shadow: 0 0 8px 2px #FFD70040; }
+.seat[data-archetype="techy"]       { box-shadow: 0 0 8px 2px #00E5FF40; }
+.seat[data-archetype="cottagecore"] { box-shadow: 0 0 8px 2px #8FBC8F40; }
+.seat[data-archetype="preppy"]      { box-shadow: 0 0 8px 2px #1E3A5F40; }
 
 /* Old desk-surface kept for layout compat */
 .desk-surface {

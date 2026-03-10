@@ -3,8 +3,10 @@
 import os
 import csv
 import json
+import logging
 import pytz
 import joblib
+from datetime import datetime, timedelta
 
 from core.paths import DATA_DIR
 from analytics.prediction_stats import PRED_HEADERS
@@ -27,6 +29,111 @@ ACCOUNT_REQUIRED_KEYS = [
     "losses", "day_trades", "risk_per_trade", "max_trade_size",
     "daily_loss", "max_daily_loss", "last_trade_day"
 ]
+
+SYMBOL_CSV_REQUIRED_COLS = {"timestamp", "open", "high", "low", "close", "volume"}
+SYMBOL_CSV_MIN_ROWS = 200
+# Warn if newest bar is older than this many calendar days (covers weekends + market holidays)
+SYMBOL_CSV_STALE_DAYS = 5
+# Symbols where a missing/stale CSV is a hard error (blocks trading)
+SYMBOL_CSV_CRITICAL = {"SPY", "QQQ"}
+
+
+def check_symbol_csvs() -> tuple[list[str], list[str]]:
+    """
+    Validate all registered symbol CSV files.
+
+    Returns
+    -------
+    errors   : list[str]  — hard errors (critical symbols missing/corrupt)
+    warnings : list[str]  — soft warnings (stale data, low row count, non-critical)
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    try:
+        import yaml
+        _base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        cfg_path = os.path.join(_base, "simulation", "sim_config.yaml")
+        with open(cfg_path) as f:
+            cfg = yaml.safe_load(f) or {}
+        registry: dict = cfg.get("symbols") or {}
+    except Exception as e:
+        warnings.append(f"symbol_registry_load_failed:{e}")
+        return errors, warnings
+
+    if not registry:
+        warnings.append("symbol_registry_empty")
+        return errors, warnings
+
+    _base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    now = datetime.now(pytz.timezone("US/Eastern"))
+    stale_cutoff = now - timedelta(days=SYMBOL_CSV_STALE_DAYS)
+
+    for symbol, entry in registry.items():
+        if not isinstance(entry, dict):
+            continue
+        rel_path = entry.get("data_file", "")
+        if not rel_path:
+            msg = f"symbol_csv_no_path:{symbol}"
+            (errors if symbol in SYMBOL_CSV_CRITICAL else warnings).append(msg)
+            continue
+
+        csv_path = os.path.join(_base, rel_path) if not os.path.isabs(rel_path) else rel_path
+
+        if not os.path.exists(csv_path):
+            msg = f"symbol_csv_missing:{symbol}:{rel_path}"
+            (errors if symbol in SYMBOL_CSV_CRITICAL else warnings).append(msg)
+            logging.error("startup_symbol_csv_missing: %s -> %s", symbol, csv_path)
+            continue
+
+        # Read headers and first data row
+        try:
+            with open(csv_path, "r", newline="") as f:
+                reader = csv.reader(f)
+                headers = next(reader, None)
+                # Count rows cheaply (iterate without loading full CSV)
+                row_count = sum(1 for _ in reader)
+        except Exception as e:
+            msg = f"symbol_csv_read_error:{symbol}:{e}"
+            (errors if symbol in SYMBOL_CSV_CRITICAL else warnings).append(msg)
+            continue
+
+        if headers is None:
+            msg = f"symbol_csv_empty:{symbol}"
+            (errors if symbol in SYMBOL_CSV_CRITICAL else warnings).append(msg)
+            continue
+
+        missing_cols = SYMBOL_CSV_REQUIRED_COLS - set(headers)
+        if missing_cols:
+            msg = f"symbol_csv_bad_columns:{symbol}:missing={','.join(sorted(missing_cols))}"
+            (errors if symbol in SYMBOL_CSV_CRITICAL else warnings).append(msg)
+            logging.error("startup_symbol_csv_bad_columns: %s missing=%s", symbol, missing_cols)
+            continue
+
+        if row_count < SYMBOL_CSV_MIN_ROWS:
+            msg = f"symbol_csv_low_rows:{symbol}:{row_count}<{SYMBOL_CSV_MIN_ROWS}"
+            warnings.append(msg)
+            logging.warning("startup_symbol_csv_low_rows: %s has %d rows (need %d)", symbol, row_count, SYMBOL_CSV_MIN_ROWS)
+
+        # Check staleness via last line timestamp
+        try:
+            with open(csv_path, "r", newline="") as f:
+                last_line = None
+                for last_line in csv.reader(f):
+                    pass
+            if last_line and len(last_line) >= 1:
+                ts_str = last_line[0]
+                ts = datetime.fromisoformat(ts_str)
+                if ts.tzinfo is None:
+                    ts = pytz.timezone("US/Eastern").localize(ts)
+                if ts < stale_cutoff:
+                    msg = f"symbol_csv_stale:{symbol}:last={ts_str}"
+                    warnings.append(msg)
+                    logging.warning("startup_symbol_csv_stale: %s last bar %s", symbol, ts_str)
+        except Exception:
+            pass  # stale check is best-effort
+
+    return errors, warnings
 
 
 def _read_csv_headers(path):
@@ -102,5 +209,10 @@ def run_startup_phase_gates():
                 errors.append(f"account_missing_keys:{','.join(missing_keys)}")
         except Exception as e:
             errors.append(f"account_read_error:{e}")
+
+    csv_errors, csv_warnings = check_symbol_csvs()
+    errors.extend(csv_errors)
+    for w in csv_warnings:
+        logging.warning("startup_symbol_csv_warning: %s", w)
 
     return errors

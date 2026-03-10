@@ -243,3 +243,39 @@ def derive_sim_signal(
 
     except Exception:
         return None, None, {"reason": "dispatch_error"}
+
+
+def derive_opportunity_signal(df, sim_states, regime, trader_signal=None):
+    """
+    OPPORTUNITY mode signal dispatcher.
+    Uses OpportunityRanker to evaluate all signal candidates and pick the best.
+
+    Returns (direction, underlying_price, signal_meta) — standard 3-tuple.
+    direction is "BULLISH", "BEARISH", or None.
+    signal_meta is a dict with ranker context, or None.
+    """
+    from simulation.sim_opportunity_ranker import OpportunityRanker
+    ranker = OpportunityRanker()
+    result = ranker.rank_opportunities(df, sim_states, regime, trader_signal=trader_signal)
+    if result is None:
+        return None, None, None
+    signal_meta = {
+        "winning_mode": result.signal_mode,
+        "composite_score": result.composite_score,
+        "breakdown": result.breakdown,
+        "competing_candidates": result.competing_candidates,
+        "recommended_dte_min": result.recommended_dte_min,
+        "recommended_dte_max": result.recommended_dte_max,
+        "recommended_hold_max_minutes": result.recommended_hold_max_minutes,
+    }
+    return result.direction, result.underlying_price, signal_meta
+
+
+def _signal_opportunity(df, context=None):
+    """
+    Legacy stub for OPPORTUNITY mode.
+    The live path now uses derive_opportunity_signal() via sim_engine.
+    Kept for backward compatibility.
+    """
+    from simulation.sim_signal_funcs import _signal_opportunity as _old_opp
+    return _old_opp(df, context)

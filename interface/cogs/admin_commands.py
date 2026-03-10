@@ -361,7 +361,8 @@ Analyzes:
             from core.data_service import get_market_dataframe
             from analytics.conviction_stats import update_expectancy
 
-            df = get_market_dataframe()
+            import asyncio as _asyncio
+            df = await _asyncio.to_thread(get_market_dataframe)
             update_expectancy(df)
             await _send_embed(
                 ctx,

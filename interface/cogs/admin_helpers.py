@@ -52,6 +52,7 @@ COMMAND_LEVELS = {
     "simsetups": "advanced",
     "simhealth": "advanced",
     "siminfo": "advanced",
+    "simanalyze": "advanced",
     "preopen": "advanced",
     "lastskip": "advanced",
     "system": "advanced",
@@ -252,6 +253,23 @@ Ranks sims by key performance metrics:
 • Best expectancy
 • Biggest winner
 • High-risk / high-reward
+""",
+    "simanalyze": """
+`!simanalyze <SIM_ID>` — Analyze trade quality for a sim.
+`!simanalyze all` — Batch summary across all sims.
+`!simanalyze <SIM_ID> apply` — Apply recommended entry filters (react ✅ to confirm).
+`!simanalyze <SIM_ID> reset` — Remove quality filters from sim config.
+
+Grades every closed trade A–F across 9 dimensions:
+• ML confidence, regime alignment, timing quality
+• Entry efficiency (MAE), exit efficiency (MFE)
+• Risk/reward, hold efficiency, spread quality
+
+Identifies what separates winners from losers and recommends
+concrete entry filters (regime whitelist, time bucket blacklist,
+ML confidence threshold, direction bias).
+
+Requires ≥15 closed trades per sim for filter recommendations.
 """,
     "simstreaks": """
 `!simstreaks`
@@ -468,7 +486,7 @@ HELP_PAGES = [
         "color": 0x2ECC71,
         "fields": [
             ("🧠 ML", "`!mlstats`, `!retrain`, `!importance`"),
-            ("🧪 Sims", "`!simstats`, `!simcompare`, `!simtrades`, `!simopen`, `!simleaderboard`, `!simstreaks`, `!simregimes`, `!simtimeofday`, `!simdte`, `!simsetups`, `!simpf`, `!simconsistency`, `!simexits`, `!simhold`, `!simreset`, `!simhealth`, `!siminfo`"),
+            ("🧪 Sims", "`!simstats`, `!simcompare`, `!simtrades`, `!simopen`, `!simleaderboard`, `!simstreaks`, `!simregimes`, `!simtimeofday`, `!simdte`, `!simsetups`, `!simpf`, `!simconsistency`, `!simexits`, `!simhold`, `!simreset`, `!simhealth`, `!siminfo`, `!simanalyze`"),
             ("⏸ Skip Status", "`!lastskip`, `!preopen`"),
         ],
     },

@@ -127,7 +127,7 @@ async def run_sim_exits() -> list[dict]:
                 if elapsed < _get_chain_interval():
                     await asyncio.sleep(_get_chain_interval() - elapsed)
                 _set_chain_ts(_time.monotonic())
-                current_price = get_option_price(trade["option_symbol"])
+                current_price = await asyncio.to_thread(get_option_price, trade["option_symbol"])
                 if current_price is None:
                     logging.warning("sim_exit_missing_quote: %s", trade["trade_id"])
                     continue

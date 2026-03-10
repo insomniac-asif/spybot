@@ -224,4 +224,98 @@ def _evaluate_exit_conditions(trade, profile, sim, current_price, elapsed_second
         except (TypeError, ValueError):
             pass
 
+    # ── Configurable Greeks exits (opt-in per-sim via profile keys) ─────────
+    # Run AFTER standard exits — a profitable trade will never be ejected here.
+
+    # 1. Enhanced theta burn: tighten or force exit on near-expiry losing trades
+    if not should_exit and profile.get("theta_burn_enabled", False):
+        try:
+            dte_threshold = int(profile.get("theta_burn_dte_threshold", 1))
+            tighten_pct   = float(profile.get("theta_burn_stop_tighten_pct", 0.50))
+            expiry_raw    = trade.get("expiry")
+            if isinstance(expiry_raw, str):
+                expiry_date = datetime.fromisoformat(expiry_raw).date()
+                current_dte = (expiry_date - now_et.date()).days
+                if current_dte <= dte_threshold and gain_pct is not None and gain_pct < 0:
+                    if current_dte <= 0 and gain_pct < -0.05:
+                        should_exit      = True
+                        exit_reason      = "theta_burn_0dte"
+                        exit_context     = f"gain_pct={gain_pct:.3%} current_dte={current_dte}"
+                        spread_guard_bypass = True
+                        logging.warning(
+                            "greeks_exit theta_burn_0dte: trade_id=%s gain=%.3f",
+                            trade.get("trade_id"), gain_pct,
+                        )
+                    else:
+                        base_sl      = abs(float(profile.get("stop_loss_pct", 0.30)))
+                        tightened_sl = base_sl * (1.0 - tighten_pct)
+                        if gain_pct <= -tightened_sl:
+                            should_exit      = True
+                            exit_reason      = "theta_burn_tightened"
+                            exit_context     = f"gain_pct={gain_pct:.3%} tightened_sl={tightened_sl:.3%} dte={current_dte}"
+                            spread_guard_bypass = True
+                            logging.warning(
+                                "greeks_exit theta_burn_tightened: trade_id=%s gain=%.3f dte=%d",
+                                trade.get("trade_id"), gain_pct, current_dte,
+                            )
+        except Exception:
+            pass
+
+    # 2. IV crush detection: option dropped more than vega_mult × entry_vega in dollars
+    if not should_exit and profile.get("iv_crush_exit_enabled", False):
+        vega_at_entry = trade.get("vega_at_entry")
+        if (isinstance(vega_at_entry, (int, float))
+                and float(vega_at_entry) > 0
+                and gain_pct is not None
+                and gain_pct < -0.15):
+            try:
+                vega_entry        = float(vega_at_entry)
+                vega_mult         = float(profile.get("iv_crush_vega_multiplier", 2.0))
+                entry_price_val   = float(trade.get("entry_price", 0))
+                if entry_price_val > 0:
+                    option_drop       = abs(gain_pct) * entry_price_val
+                    iv_crush_threshold = vega_entry * vega_mult
+                    if option_drop > iv_crush_threshold:
+                        should_exit      = True
+                        exit_reason      = "iv_crush_exit"
+                        exit_context     = (
+                            f"gain_pct={gain_pct:.3%} option_drop={option_drop:.4f} "
+                            f"threshold={iv_crush_threshold:.4f} vega={vega_entry:.4f}"
+                        )
+                        spread_guard_bypass = True
+                        logging.warning(
+                            "greeks_exit iv_crush: trade_id=%s gain=%.3f drop=%.4f threshold=%.4f",
+                            trade.get("trade_id"), gain_pct, option_drop, iv_crush_threshold,
+                        )
+            except (TypeError, ValueError):
+                pass
+
+    # 3. Delta erosion guard: entry_delta ≥ entry_min, estimated current delta < current_max
+    # Proxy: estimated delta = entry_delta × (current_price / entry_price), capped at 0
+    if not should_exit and profile.get("delta_erosion_exit_enabled", False):
+        delta_at_entry = trade.get("delta_at_entry")
+        if isinstance(delta_at_entry, (int, float)) and gain_pct is not None and gain_pct < 0:
+            try:
+                entry_delta = abs(float(delta_at_entry))
+                entry_min   = float(profile.get("delta_erosion_entry_min", 0.40))
+                current_max = float(profile.get("delta_erosion_current_max", 0.20))
+                if entry_delta >= entry_min:
+                    price_ratio = max(0.0, 1.0 + gain_pct)
+                    est_delta   = entry_delta * price_ratio
+                    if est_delta < current_max:
+                        should_exit      = True
+                        exit_reason      = "delta_erosion"
+                        exit_context     = (
+                            f"gain_pct={gain_pct:.3%} entry_delta={entry_delta:.3f} "
+                            f"est_delta={est_delta:.3f} threshold={current_max}"
+                        )
+                        spread_guard_bypass = True
+                        logging.warning(
+                            "greeks_exit delta_erosion: trade_id=%s gain=%.3f "
+                            "entry_delta=%.3f est_delta=%.3f",
+                            trade.get("trade_id"), gain_pct, entry_delta, est_delta,
+                        )
+            except (TypeError, ValueError):
+                pass
+
     return should_exit, exit_reason, exit_context, spread_guard_bypass

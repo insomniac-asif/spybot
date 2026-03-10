@@ -205,7 +205,8 @@ class MarketCommands(commands.Cog, name="Market"):
 
     @commands.command()
     async def regime(self, ctx):
-        df = get_market_dataframe()
+        import asyncio as _asyncio
+        df = await _asyncio.to_thread(get_market_dataframe)
         if df is None:
             await _send_embed(ctx, "No data.")
             return
@@ -233,7 +234,8 @@ class MarketCommands(commands.Cog, name="Market"):
 
     @commands.command()
     async def conviction(self, ctx):
-        df = get_market_dataframe()
+        import asyncio as _asyncio
+        df = await _asyncio.to_thread(get_market_dataframe)
         if df is None:
             await _send_embed(ctx, "No data.")
             return
@@ -253,7 +255,8 @@ class MarketCommands(commands.Cog, name="Market"):
 
     @commands.command()
     async def opportunity(self, ctx):
-        df = get_market_dataframe()
+        import asyncio as _asyncio
+        df = await _asyncio.to_thread(get_market_dataframe)
         if df is None:
             await _send_embed(ctx, "No data.")
             return

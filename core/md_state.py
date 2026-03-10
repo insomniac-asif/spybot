@@ -17,7 +17,7 @@ def _load_state() -> dict:
     default = {
         "enabled": False,
         "mode": "manual",
-        "auto_level": "medium",
+        "auto_level": "high",
         "last_decay": None,
         "last_decay_level": None,
         "last_changed": None,
@@ -65,7 +65,7 @@ def is_md_enabled() -> bool:
 
 def _normalize_level(level) -> str:
     if level is None:
-        return "medium"
+        return "high"
     text = str(level).strip().lower()
     mapping = {
         "1": "low",
@@ -76,7 +76,7 @@ def _normalize_level(level) -> str:
         "3": "high",
         "high": "high",
     }
-    return mapping.get(text, "medium")
+    return mapping.get(text, "high")
 
 
 def _level_rank(level: str) -> int:

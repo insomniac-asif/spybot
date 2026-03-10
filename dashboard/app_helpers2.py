@@ -14,6 +14,58 @@ from dashboard.app_helpers import (
 )
 
 
+def _build_win_rate_chart(trade_log: list, profile: dict) -> dict:
+    """
+    Build win rate progression data for the overview chart.
+    Splits trade_log into runs using balance_after_trade vs death_threshold.
+    Returns {"runs": [{"run_number": N, "is_current": bool, "points": [...]}]}.
+    """
+    death_threshold = float(profile.get("death_threshold", 25.0))
+
+    runs: list[list] = []
+    current_run: list = []
+
+    for trade in trade_log:
+        if trade.get("realized_pnl_dollars") is None:
+            continue
+        current_run.append(trade)
+        bal = trade.get("balance_after_trade")
+        if bal is not None:
+            try:
+                if float(bal) <= death_threshold:
+                    runs.append(current_run)
+                    current_run = []
+            except (TypeError, ValueError):
+                pass
+
+    if current_run:
+        runs.append(current_run)
+
+    if not runs:
+        return {"runs": []}
+
+    result_runs = []
+    for i, run_trades in enumerate(runs):
+        is_current = (i == len(runs) - 1)
+        points = []
+        wins = 0
+        for j, trade in enumerate(run_trades, start=1):
+            try:
+                pnl_val = float(trade.get("realized_pnl_dollars") or 0)
+            except (TypeError, ValueError):
+                pnl_val = 0.0
+            if pnl_val > 0:
+                wins += 1
+            points.append({"trade_num": j, "win_rate": round(wins / j * 100, 1)})
+        result_runs.append({
+            "run_number": i + 1,
+            "is_current": is_current,
+            "points": points,
+        })
+
+    return {"runs": result_runs}
+
+
 def _handle_get_sim(sim_id: str) -> dict:
     """Body of GET /api/sim/{sim_id}. Returns the full sim detail dict."""
     config = _load_config()
@@ -128,4 +180,5 @@ def _handle_get_sim(sim_id: str) -> dict:
         "open_trades": data.get("open_trades") or [],
         "recent_trades": recent_trades,
         "balance_history": balance_history,
+        "win_rate_chart": _build_win_rate_chart(trade_log, profile),
     }

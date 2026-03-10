@@ -1,0 +1,25 @@
+[Unit]
+Description=SIM00 Watchdog — Emergency stop-loss monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=asif420
+WorkingDirectory=/home/asif420/qqqbot
+ExecStart=/home/asif420/qqqbot/venv/bin/python scripts/sim00_watchdog.py
+Restart=always
+RestartSec=5
+EnvironmentFile=/home/asif420/qqqbot/.env
+
+# Safety limits
+MemoryMax=256M
+CPUQuota=10%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sim00-watchdog
+
+[Install]
+WantedBy=multi-user.target

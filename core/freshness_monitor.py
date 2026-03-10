@@ -2,12 +2,12 @@
 core/freshness_monitor.py — Auto-transitions RuntimeState on stale data.
 
 Escalation:
-  bars > 90s  → DEGRADED (entries blocked, exits OK)
-  bars > 180s → EXIT_ONLY + alert
+  bars > 300s  → DEGRADED (entries blocked, exits OK)
+  bars > 600s  → EXIT_ONLY + alert
   broker > 300s → PANIC_LOCKDOWN + alert
 
 Recovery:
-  bars < 60s AND state is DEGRADED → TRADING_ENABLED
+  bars < 150s AND state is DEGRADED → TRADING_ENABLED
 """
 
 import asyncio
@@ -15,10 +15,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-_BAR_DEGRADE_SEC   = 90
-_BAR_EXIT_ONLY_SEC = 180
+_BAR_DEGRADE_SEC   = 300   # 5 min — genuine outage, not just a slow bar
+_BAR_EXIT_ONLY_SEC = 600   # 10 min — extended outage
 _BROKER_PANIC_SEC  = 300
-_BAR_RECOVER_SEC   = 60
+_BAR_RECOVER_SEC   = 150   # recover once data is < 2.5 min old
 
 
 class FreshnessMonitor:

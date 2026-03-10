@@ -40,6 +40,7 @@ def _build_opp_embed_from_parts(
     vol: str,
     regime: str,
     _format_et,
+    symbol: str = "SPY",
 ) -> discord.Embed:
     """Build and return the opportunity embed."""
     from datetime import datetime
@@ -62,10 +63,11 @@ def _build_opp_embed_from_parts(
     if tier == "HIGH":
         opp_color = 0x27AE60 if side == "CALL" else 0xC0392B
     opp_embed = discord.Embed(
-        title=f"{emoji} {tier} Strength {side} Opportunity",
+        title=f"{emoji} [{symbol}] {tier} Strength {side} Opportunity",
         color=opp_color
     )
     side_color = "green" if side == "CALL" else "red" if side == "PUT" else "blue"
+    opp_embed.add_field(name="📍 Symbol", value=ab(A(symbol, "white", bold=True)), inline=True)
     opp_embed.add_field(name="📍 Side", value=ab(A(side, side_color, bold=True)), inline=True)
     opp_embed.add_field(name="🧭 Tier", value=ab(tier_col(tier)), inline=True)
     opp_embed.add_field(name="💰 Current Price", value=ab(A(f"${price:.2f}", "white", bold=True)), inline=True)

@@ -188,6 +188,16 @@ def _fetch_from_alpaca(symbol: str = "SPY"):
     # Rate-limit Alpaca calls
     rate_limit_sleep("alpaca_stock_bars", ALPACA_MIN_CALL_INTERVAL_SEC)
     bars = client.get_stock_bars(request)
+
+    # Broker responded without exception — mark health even if bars are empty.
+    # (Empty bars during volatile/post-market periods still means broker is reachable.)
+    try:
+        from core.singletons import RISK_SUPERVISOR
+        import time as _t
+        RISK_SUPERVISOR.update_broker_health(_t.time())
+    except ImportError:
+        pass
+
     df = getattr(bars, "df", None)
 
     if not isinstance(df, pd.DataFrame) or df.empty:
@@ -266,6 +276,15 @@ def get_symbol_dataframe(symbol: str):
                                     pass
                             fresh.attrs["source"] = "alpaca"
                             df = fresh
+                            # Write-back: persist fresh data to CSV so charts/snapshots stay current
+                            try:
+                                _cols = [c for c in ["timestamp", "open", "high", "low", "close", "volume"] if c in fresh.columns]
+                                _to_save = fresh[_cols].sort_values("timestamp").drop_duplicates("timestamp", keep="last")
+                                _tmp = csv_path + ".tmp"
+                                _to_save.to_csv(_tmp, index=False)
+                                os.replace(_tmp, csv_path)
+                            except Exception:
+                                pass
                         else:
                             df.attrs["source"] = "csv_stale"
                     else:

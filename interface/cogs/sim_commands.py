@@ -17,7 +17,7 @@ from interface.cogs.sim_helpers import (
     _gate_parts, _paginate, _add_lines_field,
 )
 from interface.cogs.sim_helpers2 import (
-    handle_simstats, handle_simcompare, handle_simleaderboard,
+    handle_simstats, handle_simcompare, handle_simleaderboard, handle_simreport,
     handle_simdte, handle_simsetups, handle_simtrades, handle_simopen,
     handle_simreset, handle_simhealth, handle_siminfo,
 )
@@ -40,6 +40,14 @@ class SimCommands(commands.Cog, name="Sims"):
     @commands.command(name="simleaderboard")
     async def simleaderboard(self, ctx):
         await handle_simleaderboard(ctx)
+
+    # ── simreport ─────────────────────────────────────────────────────────
+    @commands.command(name="simreport")
+    async def simreport(self, ctx, sim_id: str | None = None):
+        if not sim_id:
+            await ctx.send("Usage: `!simreport <SIM_ID>` e.g. `!simreport SIM05`")
+            return
+        await handle_simreport(ctx, sim_id.upper())
 
     # ── simstreaks ────────────────────────────────────────────────────────
     @commands.command(name="simstreaks")
@@ -229,6 +237,194 @@ class SimCommands(commands.Cog, name="Sims"):
     @commands.command(name="siminfo")
     async def siminfo(self, ctx, sim_id: str | int | None = None):
         await handle_siminfo(ctx, sim_id)
+
+    # ── simanalyze ────────────────────────────────────────────────────────
+    @commands.command(name="simanalyze")
+    async def simanalyze(self, ctx, sim_id: str | None = None, action: str | None = None):
+        try:
+            from simulation.trade_analyzer import (
+                generate_entry_filters, analyze_sim_trades, analyze_all_sims,
+                apply_filters_to_config,
+            )
+
+            if not sim_id:
+                await _send_embed(ctx, "Usage: `!simanalyze <SIM_ID>` | `!simanalyze all` | `!simanalyze <SIM_ID> apply` | `!simanalyze <SIM_ID> reset`")
+                return
+
+            if sim_id.lower() == "all":
+                # Batch summary across all sims
+                all_results = analyze_all_sims()
+                lines = []
+                for sid in sorted(all_results.keys()):
+                    r = all_results[sid]
+                    if r.get("insufficient_data"):
+                        lines.append(f"{A(sid, 'cyan', bold=True)} {A('< 15 trades', 'gray')}")
+                        continue
+                    wr = r.get("overall_win_rate", 0)
+                    filters = r.get("filters", {})
+                    filter_names = ", ".join(filters.keys()) if filters else "none"
+                    impact = r.get("projected_impact", {})
+                    reduction = impact.get("trade_reduction_pct")
+                    imp_str = f" -{reduction*100:.0f}%" if reduction else ""
+                    lines.append(
+                        f"{A(sid, 'cyan', bold=True)} {lbl('WR')} {wr_col(wr)}"
+                        f" {lbl('Filters')} {A(filter_names, 'white')}{A(imp_str, 'yellow')}"
+                    )
+                embed = discord.Embed(title="Sim Analyzer — All Sims", color=0x3498DB)
+                # Paginate if needed (Discord field limit 1024 chars)
+                chunk = lines[:15]
+                embed.add_field(
+                    name="Filter Recommendations",
+                    value=ab(*chunk) if chunk else ab(A("No data", "gray")),
+                    inline=False,
+                )
+                _append_footer(embed)
+                await ctx.send(embed=embed)
+                return
+
+            sid = sim_id.upper()
+
+            if action and action.lower() == "reset":
+                ok = apply_filters_to_config(sid, {}, dry_run=False)
+                msg = f"Quality filters removed for {sid}." if ok else f"Failed to reset {sid}."
+                await _send_embed(ctx, msg)
+                return
+
+            result = generate_entry_filters(sid)
+            total = result.get("total_trades", 0)
+            analysis = result.get("analysis", {})
+
+            embed = discord.Embed(
+                title=f"Sim Analyzer — {sid}",
+                description=f"{total} closed trades",
+                color=0x3498DB,
+            )
+
+            if result.get("insufficient_data"):
+                embed.add_field(
+                    name="Status",
+                    value=ab(A(result.get("message", "Insufficient data"), "yellow")),
+                    inline=False,
+                )
+                _append_footer(embed)
+                await ctx.send(embed=embed)
+                return
+
+            overall_wr = result.get("overall_win_rate", 0)
+
+            # Grade distribution
+            grade_dist = analysis.get("grade_dist", {})
+            dist_parts = []
+            for g in ["A", "B", "C", "D", "F"]:
+                count = grade_dist.get(g, 0)
+                col = "green" if g in ("A", "B") else ("yellow" if g == "C" else "red")
+                dist_parts.append(f"{A(g, col, bold=True)}{A(f':{count}', 'white')}")
+            embed.add_field(
+                name=_add_field_icons("Grade Distribution"),
+                value=ab(" ".join(dist_parts)) if dist_parts else ab(A("N/A", "gray")),
+                inline=False,
+            )
+
+            # Grade stats (win rate per grade)
+            grade_stats = analysis.get("grade_stats", {})
+            stat_lines = []
+            for g in ["A", "B", "C", "D", "F"]:
+                s = grade_stats.get(g)
+                if s and s.get("count", 0) > 0:
+                    col = "green" if g in ("A", "B") else ("yellow" if g == "C" else "red")
+                    stat_lines.append(
+                        f"{A(g, col, bold=True)} {lbl('WR')} {wr_col(s['win_rate'])}"
+                        f" {lbl('avg')} {pnl_col(s['avg_pnl'])}"
+                    )
+            if stat_lines:
+                embed.add_field(
+                    name=_add_field_icons("Win Rate by Grade"),
+                    value=ab(*stat_lines),
+                    inline=False,
+                )
+
+            # Worst dimensions
+            worst = analysis.get("worst_dimensions", [])
+            if worst:
+                wdim_lines = [
+                    f"{A(dim, 'yellow')} {A(f'{score:.0f}/100', 'white')}"
+                    for dim, score in worst
+                ]
+                embed.add_field(
+                    name=_add_field_icons("Weakest Dimensions"),
+                    value=ab(*wdim_lines),
+                    inline=False,
+                )
+
+            # Recommended filters
+            filters = result.get("filters", {})
+            if filters:
+                filter_lines = []
+                for k, v in filters.items():
+                    filter_lines.append(f"{A(k, 'cyan')} {A(str(v), 'white')}")
+                impact = result.get("projected_impact", {})
+                if impact:
+                    kept = impact.get("kept_count", 0)
+                    orig = impact.get("original_count", total)
+                    proj_wr = impact.get("projected_win_rate", overall_wr)
+                    proj_exp = impact.get("projected_expectancy", 0)
+                    filter_lines.append(
+                        f"{lbl('Impact')} {A(f'{kept}/{orig} trades', 'white')}"
+                        f" {lbl('WR')} {wr_col(proj_wr)}"
+                        f" {lbl('Exp')} {pnl_col(proj_exp)}"
+                    )
+                embed.add_field(
+                    name=_add_field_icons("Recommended Filters"),
+                    value=ab(*filter_lines),
+                    inline=False,
+                )
+            else:
+                embed.add_field(
+                    name=_add_field_icons("Filters"),
+                    value=ab(A("No filters recommended (need more data or no strong patterns found)", "gray")),
+                    inline=False,
+                )
+
+            embed.add_field(
+                name=_add_field_icons("Overall Win Rate"),
+                value=ab(wr_col(overall_wr)),
+                inline=True,
+            )
+
+            if action and action.lower() == "apply":
+                if filters:
+                    def _check(reaction, user):
+                        return user == ctx.author and str(reaction.emoji) in ("✅", "❌")
+
+                    confirm_embed = discord.Embed(
+                        title=f"Apply filters to {sid}?",
+                        description="\n".join(f"`{k}: {v}`" for k, v in filters.items()),
+                        color=0xF39C12,
+                    )
+                    confirm_embed.set_footer(text="React ✅ to apply, ❌ to cancel")
+                    msg = await ctx.send(embed=confirm_embed)
+                    await msg.add_reaction("✅")
+                    await msg.add_reaction("❌")
+                    import asyncio
+                    try:
+                        reaction, _ = await ctx.bot.wait_for("reaction_add", timeout=30.0, check=_check)
+                        if str(reaction.emoji) == "✅":
+                            ok = apply_filters_to_config(sid, filters, dry_run=False)
+                            status_msg = f"Filters applied to {sid} in sim_config.yaml." if ok else "Failed to write config."
+                            await ctx.send(status_msg)
+                        else:
+                            await ctx.send("Cancelled.")
+                    except asyncio.TimeoutError:
+                        await ctx.send("Timed out — no changes made.")
+                else:
+                    await ctx.send(f"No filters to apply for {sid}.")
+                return
+
+            _append_footer(embed)
+            await ctx.send(embed=embed)
+        except Exception:
+            logging.exception("simanalyze_error")
+            await _send_embed(ctx, "simanalyze failed due to an internal error.")
 
     # ── lastskip ──────────────────────────────────────────────────────────
     @commands.command(name="lastskip")

@@ -129,6 +129,55 @@ def _build_entry_embed(sim_id: str, result: dict) -> "discord.Embed":
         ),
         inline=False
     )
+
+    # SIM09-specific: opportunity ranker breakdown
+    if sim_id == "SIM09":
+        opp_meta = result.get("opportunity_meta")
+        if isinstance(opp_meta, dict):
+            winning_mode = opp_meta.get("winning_mode") or "N/A"
+            composite_score = opp_meta.get("composite_score")
+            score_text = f"{composite_score:.1f} / 100" if isinstance(composite_score, (int, float)) else "N/A"
+            breakdown = opp_meta.get("breakdown")
+            breakdown_text = "N/A"
+            if isinstance(breakdown, dict):
+                ss = breakdown.get("signal_strength")
+                hist = breakdown.get("historical")
+                reg = breakdown.get("regime")
+                rr = breakdown.get("risk_reward")
+                parts = []
+                if ss is not None:
+                    parts.append(f"Signal: {ss:.0f}")
+                if hist is not None:
+                    parts.append(f"History: {hist:.0f}")
+                if reg is not None:
+                    parts.append(f"Regime: {reg:.0f}")
+                if rr is not None:
+                    parts.append(f"RR: {rr:.0f}")
+                if parts:
+                    breakdown_text = " | ".join(parts)
+            num_candidates = opp_meta.get("num_candidates", 0)
+            num_text = f"{num_candidates} fired" if num_candidates else "N/A"
+            embed.add_field(
+                name="Winning Strategy",
+                value=ab(A(winning_mode, "magenta", bold=True)),
+                inline=True,
+            )
+            embed.add_field(
+                name="Score",
+                value=ab(A(score_text, "green", bold=True)),
+                inline=True,
+            )
+            embed.add_field(
+                name="Breakdown",
+                value=ab(A(breakdown_text, "cyan")),
+                inline=False,
+            )
+            embed.add_field(
+                name="Candidates",
+                value=ab(A(num_text, "white")),
+                inline=True,
+            )
+
     _und_sym = (result.get("symbol") or "SPY").upper()
     try:
         from core.data_service import get_symbol_dataframe

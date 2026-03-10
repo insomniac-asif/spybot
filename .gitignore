@@ -30,6 +30,8 @@ data/trade_narratives/
 data/*_1m.csv
 data/candidates/
 data/strategy_performance.json
+data/*.pkl
+data/postmortems/
 
 # ── Generated chart images ────────────────────────────────────────
 charts/*.png

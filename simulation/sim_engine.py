@@ -393,6 +393,7 @@ def _build_paper_trade_dict(
     if isinstance(signal_meta, dict):
         trade["structure_score"] = signal_meta.get("structure_score")
     trade["entry_context"] = None  # caller sets this
+    trade["spread_pct"] = fill_result.get("spread_pct")
     trade["iv_at_entry"] = contract.get("iv")
     trade["delta_at_entry"] = contract.get("delta")
     trade["gamma_at_entry"] = contract.get("gamma")

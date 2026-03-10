@@ -6,6 +6,7 @@ from typing import Any
 from alpaca.trading.client import TradingClient
 from alpaca.trading.enums import OrderSide, TimeInForce, PositionIntent, OrderStatus
 from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest
+from alpaca.common.exceptions import APIError
 
 from core.debug import debug_log
 from core.rate_limiter import rate_limit_sleep, get_cache, get_breaker, get_bucket
@@ -214,18 +215,28 @@ async def execute_option_entry(option_symbol: str, quantity: int, bid: float, as
 
     client = TradingClient(api_key, secret_key, paper=True)
 
+    # NOTE: Alpaca does NOT support bracket, OCO, or stop-limit orders for options.
+    # Attempting to submit a bracket order returns HTTP 422:
+    #   {"code":42210000,"message":"complex orders not supported for options trading"}
+    # SL/TP enforcement is therefore handled entirely in software (sim_exit_runner.py /
+    # sim_engine.py), not at the broker level. No broker-side stop orders are placed.
+
     # --- first attempt: limit at mid + 25% of spread ---
     first_limit = round(mid + (spread * 0.25), 2)
-    order: Any = await asyncio.to_thread(client.submit_order,
-        LimitOrderRequest(
-            symbol=option_symbol,
-            qty=quantity,
-            side=OrderSide.BUY,
-            time_in_force=TimeInForce.DAY,
-            limit_price=float(first_limit),
-            position_intent=PositionIntent.BUY_TO_OPEN,
+    try:
+        order: Any = await asyncio.to_thread(client.submit_order,
+            LimitOrderRequest(
+                symbol=option_symbol,
+                qty=quantity,
+                side=OrderSide.BUY,
+                time_in_force=TimeInForce.DAY,
+                limit_price=float(first_limit),
+                position_intent=PositionIntent.BUY_TO_OPEN,
+            )
         )
-    )
+    except APIError as _api_err:
+        _increment_no_record_exit(acc, "broker_order_rejected")
+        return None, f"broker_order_rejected:{_api_err}"
     result, error = await _poll_fill_loop(
         client, order, quantity, option_symbol, expected_mid, bid, ask,
         order_type="limit_mid_plus", ctx=ctx, acc=acc,
@@ -239,16 +250,20 @@ async def execute_option_entry(option_symbol: str, quantity: int, bid: float, as
         pass
 
     # --- second attempt: limit at ask ---
-    order: Any = await asyncio.to_thread(client.submit_order,
-        LimitOrderRequest(
-            symbol=option_symbol,
-            qty=quantity,
-            side=OrderSide.BUY,
-            time_in_force=TimeInForce.DAY,
-            limit_price=float(ask),
-            position_intent=PositionIntent.BUY_TO_OPEN,
+    try:
+        order: Any = await asyncio.to_thread(client.submit_order,
+            LimitOrderRequest(
+                symbol=option_symbol,
+                qty=quantity,
+                side=OrderSide.BUY,
+                time_in_force=TimeInForce.DAY,
+                limit_price=float(ask),
+                position_intent=PositionIntent.BUY_TO_OPEN,
+            )
         )
-    )
+    except APIError as _api_err:
+        _increment_no_record_exit(acc, "broker_order_rejected")
+        return None, f"broker_order_rejected:{_api_err}"
     result, error = await _poll_fill_loop(
         client, order, quantity, option_symbol, expected_mid, bid, ask,
         order_type="limit_ask", ctx=ctx, acc=acc,

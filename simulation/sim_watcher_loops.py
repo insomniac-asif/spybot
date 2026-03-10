@@ -59,6 +59,37 @@ SKIP_DEDUP_REASONS: frozenset = frozenset({
     "regime_filter",
 })
 
+# Reasons that map to the same dedup bucket — oscillating between these
+# (e.g. empty_chain ↔ no_contract ↔ no_snapshot) won't retrigger the notification.
+_CHAIN_FAIL_BUCKET: frozenset = frozenset({
+    "empty_chain",
+    "chain_error",
+    "no_chain_symbols",
+    "no_contract",
+    "no_snapshot",
+    "no_snapshot_all",
+    "no_snapshot_most",
+    "no_snapshot_all_no_chain_symbols",
+    "no_quote",
+    "no_quote_all",
+    "no_quote_most",
+    "no_quote_all_no_chain_symbols",
+    "snapshot_error",
+    "snapshot_error_all",
+    "snapshot_error_most",
+    "snapshot_error_all_no_chain_symbols",
+})
+
+
+def _skip_dedup_key(reason: str) -> str:
+    """Return the dedup bucket key for a skip reason.
+    Chain-failure variants all collapse to 'chain_unavailable' so they
+    don't retrigger the notification when oscillating between each other.
+    """
+    if reason in _CHAIN_FAIL_BUCKET:
+        return "chain_unavailable"
+    return reason
+
 
 # ── helpers (called inside loops) ────────────────────────────────────────────
 
@@ -272,42 +303,53 @@ def _build_weekly_leaderboard_embed(
     sim_data: list,
     now_et: datetime,
 ) -> discord.Embed:
-    eligible = [s for s in sim_data if s["sufficient"]]
-    if eligible:
-        for metric in ["exp", "wr", "pf"]:
-            sorted_by = sorted(eligible, key=lambda x: x[metric])
-            for rank, item in enumerate(sorted_by, 1):
-                item[f"{metric}_rank"] = rank
-        n = len(eligible)
-        for item in eligible:
-            exp_score = item.get("exp_rank", 0) / n if n > 0 else 0
-            wr_score = item.get("wr_rank", 0) / n if n > 0 else 0
-            pf_score = item.get("pf_rank", 0) / n if n > 0 else 0
-            item["composite"] = exp_score * 0.4 + wr_score * 0.3 + pf_score * 0.3
-        eligible.sort(key=lambda x: x["composite"], reverse=True)
+    try:
+        from analytics.composite_score import compute_composite_score, WEIGHTS
+        from interface.shared_metrics import _load_sim_profiles
+        profiles = _load_sim_profiles()
+    except Exception:
+        profiles = {}
+
+    eligible_raw = [s for s in sim_data if s["sufficient"]]
+    insufficient  = [s for s in sim_data if not s["sufficient"]]
+
+    # Attach composite scores to each eligible item
+    scored = []
+    for item in eligible_raw:
+        sim_id  = item["sim_id"]
+        profile = profiles.get(sim_id, {})
+        try:
+            r = compute_composite_score(sim_id, profile)
+        except Exception:
+            r = {"unranked": True, "composite_score": 0.0, "grade": "?", "emoji": "?"}
+        item["_composite"] = r.get("composite_score") or 0.0
+        item["_grade"]     = r.get("grade") or "?"
+        item["_emoji"]     = r.get("emoji") or "?"
+        scored.append(item)
+
+    scored.sort(key=lambda x: x["_composite"], reverse=True)
 
     embed = discord.Embed(
         title=f"🏆 Weekly Sim Leaderboard — {now_et.date().isoformat()}",
         color=0xF1C40F,
     )
     rank_lines = []
-    rank = 1
-    for item in eligible:
-        medal = "🥇" if rank == 1 else "🥈" if rank == 2 else "🥉" if rank == 3 else f"#{rank}"
-        mode_tag = " 🔴" if item["mode"] == "LIVE" else ""
-        pf_text = f"{item['pf']:.2f}"
+    for rank, item in enumerate(scored, 1):
+        medal      = "🥇" if rank == 1 else "🥈" if rank == 2 else "🥉" if rank == 3 else f"#{rank}"
+        mode_tag   = " 🔴" if item["mode"] == "LIVE" else ""
+        comp_str   = f"{item['_composite']:.1f}"
+        pf_str     = f"{item['pf']:.2f}"
         rank_lines.append(
-            f"{lbl(medal)} {A(item['sim_id'] + mode_tag, 'cyan', bold=True)}  "
+            f"{lbl(medal)} {A(item['sim_id'] + mode_tag, 'cyan', bold=True)} "
+            f"{A(item['_emoji'], 'white')} {A(item['_grade'], 'yellow', bold=True)} "
+            f"{A(comp_str, 'white', bold=True)}  "
             f"{lbl('WR')} {wr_col(item['wr'])}  "
-            f"{lbl('Exp')} {pnl_col(item['exp'])}  "
-            f"{lbl('PF')} {A(pf_text, 'white')}  "
+            f"{lbl('PF')} {A(pf_str, 'white')}  "
             f"{lbl('PnL')} {pnl_col(item['total_pnl'])}"
         )
-        rank += 1
 
-    insufficient = [s for s in sim_data if not s["sufficient"]]
     for item in insufficient:
-        insuff_text = f"({item['trades']} trades — insufficient data)"
+        insuff_text = f"({item['trades']} trades — need 10)"
         rank_lines.append(
             f"{lbl('—')} {A(item['sim_id'], 'gray')}  "
             f"{A(insuff_text, 'gray')}"
@@ -315,12 +357,13 @@ def _build_weekly_leaderboard_embed(
 
     for i in range(0, len(rank_lines), 5):
         chunk = rank_lines[i:i + 5]
-        field_name = "Rankings" if i == 0 else "​"
-        embed.add_field(name=field_name, value=ab(*chunk), inline=False)
+        embed.add_field(name="Rankings" if i == 0 else "​", value=ab(*chunk), inline=False)
 
-    embed.set_footer(
-        text=f"Composite: 40% Expectancy + 30% Win Rate + 30% Profit Factor | {_format_et(now_et)}"
-    )
+    w = WEIGHTS if "WEIGHTS" in dir() else {}
+    embed.set_footer(text=(
+        f"Composite: 25% P&L + 20% WR + 25% PF + 20% Consistency + 10% DD Control"
+        f" | {_format_et(now_et)}"
+    ))
     return embed
 
 

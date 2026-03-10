@@ -405,8 +405,10 @@ async def _execute_paper_entry(
         await asyncio.sleep(_get_chain_interval() - elapsed)
     _set_chain_ts(_time.monotonic())
 
-    contract, contract_reason = select_sim_contract_with_reason(
-        direction, underlying_price, {**effective_profile, "sim_id": sim_id}, symbol=_trade_symbol
+    contract, contract_reason = await asyncio.to_thread(
+        select_sim_contract_with_reason,
+        direction, underlying_price, {**effective_profile, "sim_id": sim_id},
+        symbol=_trade_symbol,
     )
     if contract is None:
         results.append({

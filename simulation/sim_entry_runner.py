@@ -547,6 +547,25 @@ async def run_sim_entries(
                     except Exception as _qf_exc:
                         logging.debug("quality_gate_error: %s", _qf_exc)
 
+                # ── Anti-pattern filter (opt-in per sim) ──────────────────
+                if profile.get("anti_pattern_filter_enabled"):
+                    try:
+                        from simulation.anti_pattern_filter import check_anti_patterns
+                        _ap_skip = check_anti_patterns(
+                            sim_id, df, direction, regime=regime,
+                        )
+                        if _ap_skip:
+                            results.append({
+                                "sim_id": sim_id,
+                                "status": "skipped",
+                                "reason": _ap_skip,
+                                "entry_context": entry_context,
+                                "signal_mode": signal_mode,
+                            })
+                            continue
+                    except Exception as _ap_exc:
+                        logging.debug("anti_pattern_filter_error: %s", _ap_exc)
+
                 execution_mode = sim.profile.get("execution_mode")
                 if execution_mode == "live":
                     await _execute_live_entry(

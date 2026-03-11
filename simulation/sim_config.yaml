@@ -33,7 +33,7 @@ SIM00:
   features_enabled: true
   execution_mode: live
   enabled: true
-  source_sim: SIM11
+  source_sim: SIM22
   min_source_trades: 50
   capital_limit_dollars: 1500
   dte_min: 1
@@ -62,7 +62,7 @@ SIM00:
   iv_series_window: 200
   circuit_breaker:
     enabled: true
-    source_sim: SIM11
+    source_sim: SIM22
     rolling_window: 20
     min_win_rate: 0.35
     min_expectancy: -50.0
@@ -890,6 +890,7 @@ SIM20:
   horizon: scalp
   signal_mode: OPENING_DRIVE
   features_enabled: false
+  anti_pattern_filter_enabled: true
   open_move_min_pct: 0.003
   entry_start_time_et: 09:30
   dte_min: 0
@@ -1019,6 +1020,7 @@ SIM23:
   horizon: intraday
   signal_mode: EXTREME_EXTENSION_FADE
   features_enabled: true
+  anti_pattern_filter_enabled: true
   vwap_z_threshold: 2.5
   rsi_bear_threshold: 76.0
   rsi_bull_threshold: 24.0

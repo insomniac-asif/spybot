@@ -39,7 +39,7 @@ EOD_CLOSE = dt_time(15, 58)     # Force close all at this time
 
 DEFAULT_BALANCE_START = 500.0
 DEFAULT_DEATH_THRESHOLD = 25.0
-TARGET_BALANCE = 10_000.0
+TARGET_BALANCE = 5_000.0
 
 BARS_WARMUP = 30  # Minimum bars needed before signal evaluation
 
@@ -466,37 +466,41 @@ class BacktestEngine:
         self._current_run: Optional[BacktestRun] = None
 
     def run(self) -> BacktestSummary:
-        """Execute the full backtest. Returns BacktestSummary."""
-        primary_symbol = self._tradeable[0]
+        """Execute the full backtest across all tradeable symbols. Returns BacktestSummary."""
 
-        if self.verbose:
-            print(f"\n[{self.profile_id}] Fetching {primary_symbol} bars {self.start_date} -> {self.end_date}...")
+        # ── Fetch and prepare bars for ALL tradeable symbols ──────────────
+        sym_dfs: dict[str, pd.DataFrame] = {}
+        for sym in self._tradeable:
+            if self.verbose:
+                print(f"  [{self.profile_id}] Fetching {sym} bars {self.start_date} -> {self.end_date}...")
+            df = fetch_stock_bars(sym, self.start_date, self.end_date)
+            if df is not None and not df.empty:
+                df = _prepare_df_with_indicators(df)
+                if df is not None and not df.empty:
+                    sym_dfs[sym] = df
+                    if self.verbose:
+                        print(f"    {sym}: {len(df)} bars")
 
-        stock_df = fetch_stock_bars(primary_symbol, self.start_date, self.end_date)
-        if stock_df is None or stock_df.empty:
-            logging.warning("backtest_no_data: %s %s", self.profile_id, primary_symbol)
-            return self._build_summary(primary_symbol)
+        if not sym_dfs:
+            logging.warning("backtest_no_data: %s", self.profile_id)
+            return self._build_summary(",".join(self._tradeable))
 
-        stock_df = _prepare_df_with_indicators(stock_df)
-        if stock_df is None or stock_df.empty:
-            return self._build_summary(primary_symbol)
-
-        if self.verbose:
-            print(f"  Got {len(stock_df)} bars. Starting backtest...")
-
-        all_bars = list(stock_df.iterrows())
+        # Use the symbol with most bars as the "clock"
+        clock_symbol = max(sym_dfs, key=lambda s: len(sym_dfs[s]))
+        clock_df = sym_dfs[clock_symbol]
+        all_bars = list(clock_df.iterrows())
         total_bars = len(all_bars)
 
+        if self.verbose:
+            print(f"  Clock: {clock_symbol} ({total_bars} bars), trading {len(sym_dfs)} symbols: {list(sym_dfs.keys())}")
+
         # In adaptive replay mode: each run replays ALL data from the start
-        # with progressively better filters. Runs continue until:
-        # - max_runs is hit, or
-        # - the filters converge (no changes for 2 consecutive runs)
         if self.adaptive:
             max_adaptive_runs = self.max_runs if self.max_runs > 0 else 10
             no_change_count = 0
             for run_number in range(1, max_adaptive_runs + 1):
                 run_result = self._execute_single_run(
-                    run_number, primary_symbol, stock_df, all_bars, total_bars
+                    run_number, sym_dfs, clock_df, all_bars, total_bars
                 )
                 # Learn from completed run
                 if self.adapt_filters is not None and run_result["trades"]:
@@ -513,6 +517,7 @@ class BacktestEngine:
                             "realized_pnl_dollars": t.pnl,
                             "pnl_pct": t.pnl_pct,
                             "exit_reason": t.exit_reason,
+                            "symbol": t.symbol,
                         }
                         for t in run_result["trades"]
                     ]
@@ -529,7 +534,6 @@ class BacktestEngine:
                         no_change_count += 1
                     else:
                         no_change_count = 0
-                    # Stop if filters converged (no changes for 2 runs)
                     if no_change_count >= 2 and run_number >= 3:
                         if self.verbose:
                             print(f"  [ADAPT] Filters converged after {run_number} runs.")
@@ -541,11 +545,10 @@ class BacktestEngine:
                 print(f"  [{self.profile_id}] Backtest complete: {len(self.runs)} runs, {total_trades_all} total trades")
                 if total_trades_all > 0:
                     print(f"    Overall win rate: {total_wins/total_trades_all*100:.1f}%")
-            return self._build_summary(primary_symbol)
+            return self._build_summary(",".join(sym_dfs.keys()))
 
-        # Non-adaptive: single continuous run (original behavior)
-        run_number = 1
-        run_result = self._execute_single_run(1, primary_symbol, stock_df, all_bars, total_bars)
+        # Non-adaptive: single continuous run
+        self._execute_single_run(1, sym_dfs, clock_df, all_bars, total_bars)
 
         if self.verbose:
             total_trades_all = sum(len(r.trades) for r in self.runs)
@@ -553,14 +556,16 @@ class BacktestEngine:
             print(f"  [{self.profile_id}] Backtest complete: {len(self.runs)} runs, {total_trades_all} total trades")
             if total_trades_all > 0:
                 print(f"    Overall win rate: {total_wins/total_trades_all*100:.1f}%")
-        return self._build_summary(primary_symbol)
+        return self._build_summary(",".join(sym_dfs.keys()))
 
-    def _execute_single_run(self, run_number: int, primary_symbol: str,
-                            stock_df: pd.DataFrame, all_bars: list, total_bars: int) -> dict:
-        """Execute a single run through the data. Returns dict with run metrics."""
+    def _execute_single_run(self, run_number: int, sym_dfs: dict[str, pd.DataFrame],
+                            clock_df: pd.DataFrame, all_bars: list, total_bars: int) -> dict:
+        """Execute a single run through the data across all symbols. Returns dict with run metrics."""
         balance = self.balance_start
         peak_balance = self.balance_start
-        open_trade: Optional[_OpenTrade] = None
+        # Multi-symbol: track open trades per symbol (max 1 per symbol at a time)
+        open_trades: dict[str, _OpenTrade] = {}
+        max_concurrent = min(3, len(sym_dfs))  # Max simultaneous positions across symbols
         run_trades: list[BacktestTrade] = []
         equity_curve: list[dict] = []
         hit_target = False
@@ -568,11 +573,16 @@ class BacktestEngine:
         daily_trades = 0
         last_trade_date: Optional[date] = None
         run_start_ts = all_bars[0][0] if all_bars else None
+        all_symbols_str = ",".join(sym_dfs.keys())
+
+        # Build per-symbol bar lookup for fast timestamp access
+        sym_bar_lookup: dict[str, dict] = {}
+        for sym, sdf in sym_dfs.items():
+            sym_bar_lookup[sym] = {ts_val: row_val for ts_val, row_val in sdf.iterrows()}
 
         for bar_idx in range(total_bars):
             ts, row = all_bars[bar_idx]
 
-            # Record equity curve point (every 30 bars)
             if bar_idx % 30 == 0:
                 equity_curve.append({
                     "timestamp": str(ts),
@@ -581,8 +591,6 @@ class BacktestEngine:
                 })
 
             current_date = ts.date() if isinstance(ts, (pd.Timestamp, datetime)) else None
-
-            # Reset daily trade counter at day boundary
             if current_date and current_date != last_trade_date:
                 daily_trades = 0
                 last_trade_date = current_date
@@ -593,21 +601,29 @@ class BacktestEngine:
 
             bar_time = _get_et_time(ts)
 
-            # ── Check existing open trade ────────────────────────────────
-            if open_trade is not None:
-                # Get current option price from cached bars
+            # ── Check ALL existing open trades for exits ──────────────────
+            blown = False
+            for trade_sym in list(open_trades.keys()):
+                open_trade = open_trades[trade_sym]
+
                 opt_price = self._get_option_price_at(
                     open_trade.contract,
                     str(current_date) if current_date else "",
                     ts,
                 )
-
                 if opt_price is None or opt_price <= 0:
-                    # No option data — use a synthetic price based on underlying move
-                    # Simple proxy: option price decays with underlying
-                    opt_price = open_trade.entry_price * max(0.05, (1 + (close_price / float(row.get("open", close_price)) - 1) * 5))
+                    # Synthetic price proxy from underlying move
+                    sym_row = sym_bar_lookup.get(trade_sym, {}).get(ts)
+                    if sym_row is not None:
+                        sym_close = float(sym_row.get("close", 0) or 0)
+                        sym_open = float(sym_row.get("open", sym_close) or sym_close)
+                        if sym_open > 0:
+                            opt_price = open_trade.entry_price * max(0.05, (1 + (sym_close / sym_open - 1) * 5))
+                        else:
+                            opt_price = open_trade.entry_price * 0.95
+                    else:
+                        opt_price = open_trade.entry_price * max(0.05, (1 + (close_price / float(row.get("open", close_price)) - 1) * 5))
 
-                # Convert open trade to dict for exit_adapter compatibility
                 trade_dict = {
                     "trade_id": open_trade.trade_id,
                     "entry_price": open_trade.entry_price,
@@ -624,15 +640,9 @@ class BacktestEngine:
 
                 entry_dt = datetime.fromisoformat(open_trade.entry_time)
                 if entry_dt.tzinfo is None and isinstance(ts, pd.Timestamp) and ts.tzinfo is not None:
-                    import pytz as _pytz
-                    entry_dt = _pytz.timezone("America/New_York").localize(entry_dt)
-                elapsed = (ts.to_pydatetime() if isinstance(ts, pd.Timestamp) else ts) - entry_dt
-                if elapsed.total_seconds() < 0:
-                    elapsed_seconds = 0
-                else:
-                    elapsed_seconds = elapsed.total_seconds()
+                    entry_dt = pytz.timezone("America/New_York").localize(entry_dt)
+                elapsed_seconds = max(0, ((ts.to_pydatetime() if isinstance(ts, pd.Timestamp) else ts) - entry_dt).total_seconds())
 
-                # Apply adaptive max_hold override
                 if self.adapt_filters and self.adapt_filters.max_hold_seconds > 0:
                     trade_dict["hold_max_seconds"] = min(
                         trade_dict.get("hold_max_seconds", 86400),
@@ -640,32 +650,22 @@ class BacktestEngine:
                     )
 
                 should_exit, exit_reason, exit_price = check_exit_conditions(
-                    trade_dict,
-                    self.profile,
-                    opt_price,
-                    elapsed_seconds,
-                    ts,
+                    trade_dict, self.profile, opt_price, elapsed_seconds, ts,
                 )
 
-                # Sync mutable state back from trade_dict
                 open_trade.peak_price = float(trade_dict.get("peak_price") or open_trade.peak_price)
                 open_trade.trailing_stop_activated = bool(trade_dict.get("trailing_stop_activated", False))
                 open_trade.trailing_stop_high = float(trade_dict.get("trailing_stop_high") or 0)
 
                 if should_exit and exit_reason != "still_open":
-                    # Apply exit slippage (worse price on exit)
                     actual_exit_price = exit_price * (1 - EXIT_SLIPPAGE)
-                    # Return full exit proceeds to balance (notional was deducted on entry)
                     exit_proceeds = actual_exit_price * open_trade.qty * 100
                     entry_notional = open_trade.entry_price * open_trade.qty * 100
                     pnl = exit_proceeds - entry_notional
                     balance_after = balance + exit_proceeds
                     pnl_pct = (actual_exit_price - open_trade.entry_price) / open_trade.entry_price
 
-                    # Parse entry time for context
                     _entry_dt = datetime.fromisoformat(open_trade.entry_time)
-                    _holding_secs = int(elapsed_seconds)
-
                     bt_trade = BacktestTrade(
                         run_number=run_number,
                         trade_num=len(run_trades) + 1,
@@ -690,7 +690,7 @@ class BacktestEngine:
                         day_of_week=_entry_dt.weekday(),
                         day_of_week_name=_entry_dt.strftime("%A"),
                         confidence=open_trade.confidence,
-                        holding_seconds=_holding_secs,
+                        holding_seconds=int(elapsed_seconds),
                     )
                     run_trades.append(bt_trade)
                     equity_curve.append({
@@ -704,222 +704,198 @@ class BacktestEngine:
                     balance = balance_after
                     if balance > peak_balance:
                         peak_balance = balance
-                    open_trade = None
+                    del open_trades[trade_sym]
 
-                    # Check target hit
                     if not hit_target and balance >= TARGET_BALANCE:
                         hit_target = True
                         target_hit_date = str(current_date)
                         if self.verbose:
                             print(f"  [{self.profile_id}] Run #{run_number}: TARGET HIT ${balance:.0f} on {current_date} after {len(run_trades)} trades")
 
-                    # Check death
                     if balance <= self.death_threshold:
-                        if self.verbose:
-                            print(f"  [{self.profile_id}] Run #{run_number}: BLOWN ${balance:.2f} after {len(run_trades)} trades (peak ${peak_balance:.0f})")
+                        blown = True
+                        break
 
-                        self._finalize_run(
-                            run_number=run_number,
-                            symbol=primary_symbol,
-                            balance=balance,
-                            peak_balance=peak_balance,
-                            outcome="BLOWN",
-                            hit_target=hit_target,
-                            target_hit_date=target_hit_date,
-                            trades=run_trades,
-                            equity_curve=equity_curve,
-                            start_ts=run_start_ts,
-                            end_ts=ts,
-                        )
-                        return {
-                            "outcome": "BLOWN", "trades": run_trades,
-                            "peak_balance": peak_balance, "final_balance": balance,
-                            "hit_target": hit_target,
-                        }
+            if blown:
+                if self.verbose:
+                    print(f"  [{self.profile_id}] Run #{run_number}: BLOWN ${balance:.2f} after {len(run_trades)} trades (peak ${peak_balance:.0f})")
+                self._finalize_run(
+                    run_number=run_number, symbol=all_symbols_str,
+                    balance=balance, peak_balance=peak_balance,
+                    outcome="BLOWN", hit_target=hit_target,
+                    target_hit_date=target_hit_date, trades=run_trades,
+                    equity_curve=equity_curve, start_ts=run_start_ts, end_ts=ts,
+                )
+                return {
+                    "outcome": "BLOWN", "trades": run_trades,
+                    "peak_balance": peak_balance, "final_balance": balance,
+                    "hit_target": hit_target,
+                }
 
-                    continue  # Done with this bar (trade was closed)
-
-                continue  # Trade still open, keep monitoring
-
-            # ── No open trade: check for new entry ──────────────────────
-            # Only enter during trading hours
+            # ── Check for new entries across all symbols ──────────────────
             if not _is_trading_bar(ts):
                 continue
-
-            # Need enough warmup bars
             if bar_idx < BARS_WARMUP:
                 continue
-
-            # Daily trade limit
             if daily_trades >= self.max_daily_trades:
                 continue
-
-            # Regime check
-            window_df = stock_df.iloc[max(0, bar_idx - 200):bar_idx + 1]
-            regime = _compute_regime(window_df)
-            if not _check_regime_filter(self.profile, regime):
+            if len(open_trades) >= max_concurrent:
                 continue
 
-            # Compute features if needed
-            feature_snapshot = compute_features_for_backtest(window_df, self.profile, self.signal_mode)
+            for entry_sym in sym_dfs:
+                if entry_sym in open_trades:
+                    continue
+                if len(open_trades) >= max_concurrent:
+                    break
 
-            # Derive signal
-            direction, underlying_price, meta = get_signal(
-                window_df,
-                self.signal_mode,
-                self.profile,
-                feature_snapshot=feature_snapshot,
-            )
-
-            if direction is None or underlying_price is None:
-                continue
-
-            underlying_price = float(underlying_price)
-            if underlying_price <= 0:
-                underlying_price = close_price
-
-            # ── Adaptive filter gate ──────────────────────────────────────
-            if self.adapt_filters is not None:
-                signal_confidence = float(meta.get("confidence", 0)) if isinstance(meta, dict) else 0.0
-                _adapt_skip = self.adapt_filters.should_skip(
-                    entry_hour=bar_time.hour,
-                    day_of_week=current_date.weekday() if current_date else 0,
-                    direction=direction,
-                    regime=regime,
-                    confidence=signal_confidence,
-                )
-                if _adapt_skip:
+                sym_df = sym_dfs[entry_sym]
+                sym_row = sym_bar_lookup[entry_sym].get(ts)
+                if sym_row is None:
                     continue
 
-            # Select expiry
-            trade_date = current_date
-            dte_min = int(self.profile.get("dte_min", 0))
-            dte_max = int(self.profile.get("dte_max", 1))
-            expiry = _select_expiry(trade_date, dte_min, dte_max)
-            if expiry is None:
-                continue
+                sym_close = float(sym_row.get("close", 0) or 0)
+                if sym_close <= 0:
+                    continue
 
-            # Select strike
-            otm_pct = float(self.profile.get("otm_pct", 0.005))
-            strike = _select_option_strike(underlying_price, direction, otm_pct)
+                # Window from this symbol's data for signal
+                sym_idx = sym_df.index.get_indexer([ts], method="pad")[0]
+                if sym_idx < BARS_WARMUP:
+                    continue
+                window_df = sym_df.iloc[max(0, sym_idx - 200):sym_idx + 1]
 
-            # Build OCC symbol
-            contract = build_occ_symbol(primary_symbol, expiry, direction, strike)
+                regime = _compute_regime(window_df)
+                if not _check_regime_filter(self.profile, regime):
+                    continue
 
-            # Fetch option bars for this contract on this date
-            date_str = str(trade_date)
-            opt_df = self._get_or_fetch_option_bars(contract, date_str)
-
-            if opt_df is None or opt_df.empty:
-                continue
-
-            # Find option price at current bar time
-            entry_opt_price = self._get_option_price_at(contract, date_str, ts)
-            if entry_opt_price is None or entry_opt_price <= 0:
-                continue
-
-            # Apply entry slippage (pay more on entry)
-            fill_price = entry_opt_price * (1 + ENTRY_SLIPPAGE)
-
-            # Position sizing (with adaptive multiplier)
-            qty, risk_dollars, block_reason = _position_size(balance, fill_price, self.profile)
-            if block_reason or qty <= 0:
-                continue
-
-            # Apply adaptive sizing multiplier
-            if self.adapt_filters is not None:
-                size_mult = self.adapt_filters.get_sizing_multiplier(
-                    entry_hour=bar_time.hour,
-                    day_of_week=current_date.weekday() if current_date else 0,
+                feature_snapshot = compute_features_for_backtest(window_df, self.profile, self.signal_mode)
+                direction, underlying_price, meta = get_signal(
+                    window_df, self.signal_mode, self.profile,
+                    feature_snapshot=feature_snapshot,
                 )
-                # Scale qty by multiplier (min 1, max 3x original)
-                adjusted_qty = max(1, min(qty * 3, round(qty * size_mult)))
-                qty = adjusted_qty
 
-            # Reserve notional (deduct from balance)
-            notional = fill_price * qty * 100
-            if notional > balance:
-                continue
+                if direction is None or underlying_price is None:
+                    continue
 
-            balance -= notional
+                underlying_price = float(underlying_price)
+                if underlying_price <= 0:
+                    underlying_price = sym_close
 
-            # Record trade open
-            trade_id = str(uuid.uuid4())[:8]
-            signal_confidence = float(meta.get("confidence", 0)) if isinstance(meta, dict) else 0.0
+                # Adaptive filter gate
+                if self.adapt_filters is not None:
+                    signal_confidence = float(meta.get("confidence", 0)) if isinstance(meta, dict) else 0.0
+                    if self.adapt_filters.should_skip(
+                        entry_hour=bar_time.hour,
+                        day_of_week=current_date.weekday() if current_date else 0,
+                        direction=direction, regime=regime,
+                        confidence=signal_confidence,
+                    ):
+                        continue
 
-            open_trade = _OpenTrade(
-                trade_id=trade_id,
-                entry_time=str(ts),
-                entry_price=fill_price,
-                qty=qty,
-                direction=direction,
-                symbol=primary_symbol,
-                contract=contract,
-                expiry=str(expiry),
-                stop_loss_pct=float(self.profile.get("stop_loss_pct", 0.30)),
-                hold_min_seconds=float(self.profile.get("hold_min_seconds", 60)),
-                hold_max_seconds=float(self.profile.get("hold_max_seconds", 3600)),
-                balance_before=balance + notional,  # balance BEFORE deducting notional
-                peak_price=fill_price,
-                regime=regime,
-                confidence=signal_confidence,
-            )
-            daily_trades += 1
+                trade_date = current_date
+                dte_min = int(self.profile.get("dte_min", 0))
+                dte_max = int(self.profile.get("dte_max", 1))
+                expiry = _select_expiry(trade_date, dte_min, dte_max)
+                if expiry is None:
+                    continue
 
-        # End of data: close any open trade at last price
-        if open_trade is not None and all_bars:
+                otm_pct = float(self.profile.get("otm_pct", 0.005))
+                strike = _select_option_strike(underlying_price, direction, otm_pct)
+                contract = build_occ_symbol(entry_sym, expiry, direction, strike)
+
+                date_str = str(trade_date)
+                opt_df = self._get_or_fetch_option_bars(contract, date_str)
+                if opt_df is None or opt_df.empty:
+                    continue
+
+                entry_opt_price = self._get_option_price_at(contract, date_str, ts)
+                if entry_opt_price is None or entry_opt_price <= 0:
+                    continue
+
+                fill_price = entry_opt_price * (1 + ENTRY_SLIPPAGE)
+
+                qty, risk_dollars, block_reason = _position_size(balance, fill_price, self.profile)
+                if block_reason or qty <= 0:
+                    continue
+
+                if self.adapt_filters is not None:
+                    size_mult = self.adapt_filters.get_sizing_multiplier(
+                        entry_hour=bar_time.hour,
+                        day_of_week=current_date.weekday() if current_date else 0,
+                    )
+                    qty = max(1, min(qty * 3, round(qty * size_mult)))
+
+                notional = fill_price * qty * 100
+                if notional > balance:
+                    continue
+
+                balance -= notional
+                trade_id = str(uuid.uuid4())[:8]
+                signal_confidence = float(meta.get("confidence", 0)) if isinstance(meta, dict) else 0.0
+
+                open_trades[entry_sym] = _OpenTrade(
+                    trade_id=trade_id, entry_time=str(ts),
+                    entry_price=fill_price, qty=qty,
+                    direction=direction, symbol=entry_sym,
+                    contract=contract, expiry=str(expiry),
+                    stop_loss_pct=float(self.profile.get("stop_loss_pct", 0.30)),
+                    hold_min_seconds=float(self.profile.get("hold_min_seconds", 60)),
+                    hold_max_seconds=float(self.profile.get("hold_max_seconds", 3600)),
+                    balance_before=balance + notional,
+                    peak_price=fill_price, regime=regime,
+                    confidence=signal_confidence,
+                )
+                daily_trades += 1
+
+        # End of data: close all open trades at last price
+        if open_trades and all_bars:
             last_ts, last_row = all_bars[-1]
-            last_opt_price = self._get_option_price_at(
-                open_trade.contract,
-                str(last_ts.date() if isinstance(last_ts, (pd.Timestamp, datetime)) else date.today()),
-                last_ts,
-            )
-            if last_opt_price is None or last_opt_price <= 0:
-                last_opt_price = open_trade.entry_price * 0.80
-            actual_exit = last_opt_price * (1 - EXIT_SLIPPAGE)
-            exit_proceeds = actual_exit * open_trade.qty * 100
-            entry_notional = open_trade.entry_price * open_trade.qty * 100
-            pnl = exit_proceeds - entry_notional
-            balance_after = balance + exit_proceeds
+            for trade_sym, open_trade in open_trades.items():
+                last_opt_price = self._get_option_price_at(
+                    open_trade.contract,
+                    str(last_ts.date() if isinstance(last_ts, (pd.Timestamp, datetime)) else date.today()),
+                    last_ts,
+                )
+                if last_opt_price is None or last_opt_price <= 0:
+                    last_opt_price = open_trade.entry_price * 0.80
+                actual_exit = last_opt_price * (1 - EXIT_SLIPPAGE)
+                exit_proceeds = actual_exit * open_trade.qty * 100
+                entry_notional = open_trade.entry_price * open_trade.qty * 100
+                pnl = exit_proceeds - entry_notional
+                balance_after = balance + exit_proceeds
 
-            bt_trade = BacktestTrade(
-                run_number=run_number,
-                trade_num=len(run_trades) + 1,
-                date=str(last_ts.date()) if isinstance(last_ts, (pd.Timestamp, datetime)) else "",
-                entry_time=open_trade.entry_time,
-                exit_time=str(last_ts),
-                direction=open_trade.direction,
-                symbol=open_trade.symbol,
-                contract=open_trade.contract,
-                entry_price=open_trade.entry_price,
-                exit_price=round(actual_exit, 4),
-                qty=open_trade.qty,
-                pnl=round(pnl, 4),
-                pnl_pct=round((actual_exit - open_trade.entry_price) / open_trade.entry_price, 4),
-                balance_before=round(open_trade.balance_before, 2),
-                balance_after=round(balance_after, 2),
-                exit_reason="data_exhausted_close",
-                signal_mode=self.signal_mode,
-            )
-            run_trades.append(bt_trade)
-            balance = balance_after
-            if balance > peak_balance:
-                peak_balance = balance
+                bt_trade = BacktestTrade(
+                    run_number=run_number,
+                    trade_num=len(run_trades) + 1,
+                    date=str(last_ts.date()) if isinstance(last_ts, (pd.Timestamp, datetime)) else "",
+                    entry_time=open_trade.entry_time,
+                    exit_time=str(last_ts),
+                    direction=open_trade.direction,
+                    symbol=open_trade.symbol,
+                    contract=open_trade.contract,
+                    entry_price=open_trade.entry_price,
+                    exit_price=round(actual_exit, 4),
+                    qty=open_trade.qty,
+                    pnl=round(pnl, 4),
+                    pnl_pct=round((actual_exit - open_trade.entry_price) / open_trade.entry_price, 4),
+                    balance_before=round(open_trade.balance_before, 2),
+                    balance_after=round(balance_after, 2),
+                    exit_reason="data_exhausted_close",
+                    signal_mode=self.signal_mode,
+                )
+                run_trades.append(bt_trade)
+                balance = balance_after
+                if balance > peak_balance:
+                    peak_balance = balance
 
         # Finalize run (data exhausted)
         last_ts_val = all_bars[-1][0] if all_bars else None
         outcome = "TARGET_HIT" if hit_target else "DATA_EXHAUSTED"
         self._finalize_run(
-            run_number=run_number,
-            symbol=primary_symbol,
-            balance=balance,
-            peak_balance=peak_balance,
-            outcome=outcome,
-            hit_target=hit_target,
-            target_hit_date=target_hit_date,
-            trades=run_trades,
-            equity_curve=equity_curve,
-            start_ts=run_start_ts,
+            run_number=run_number, symbol=all_symbols_str,
+            balance=balance, peak_balance=peak_balance,
+            outcome=outcome, hit_target=hit_target,
+            target_hit_date=target_hit_date, trades=run_trades,
+            equity_curve=equity_curve, start_ts=run_start_ts,
             end_ts=last_ts_val,
         )
 

@@ -25,7 +25,7 @@ from interface.shared_state import (
     _tag_trade_mode,
     _safe_float,
 )
-from core.data_service import get_market_dataframe, get_symbol_csv_path
+from core.data_service import get_market_dataframe, get_symbol_csv_path, get_symbol_dataframe
 
 
 async def _symbol_snapshot(ctx, symbol: str):
@@ -33,27 +33,20 @@ async def _symbol_snapshot(ctx, symbol: str):
     symbol = symbol.upper()
     import pandas_ta as _ta
     try:
-        # Load candle data from CSV via registry
         from datetime import date as _date
         import pandas as _pd
-        csv_path = get_symbol_csv_path(symbol)
-        df = None
-        if csv_path and os.path.exists(csv_path):
-            df = _pd.read_csv(csv_path)
-            df.columns = [c.lower() for c in df.columns]
-            ts_col = next((c for c in ("timestamp", "time", "datetime") if c in df.columns), None)
-            if ts_col:
-                df[ts_col] = _pd.to_datetime(df[ts_col], errors="coerce")
-                df = df.dropna(subset=[ts_col])
-                if df[ts_col].dt.tz is not None:
-                    df[ts_col] = df[ts_col].dt.tz_convert("US/Eastern").dt.tz_localize(None)
-                df = df.set_index(ts_col).sort_index()
-                # Filter to today only
-                today = _pd.Timestamp(_date.today())
-                df = df[df.index.date == today.date()]
-        # For SPY fall back to get_market_dataframe
-        if (df is None or df.empty) and symbol == "SPY":
-            df = await asyncio.to_thread(get_market_dataframe)
+        # Use get_symbol_dataframe for all symbols (handles CSV + Alpaca refresh)
+        df = await asyncio.to_thread(get_symbol_dataframe, symbol)
+        if df is not None and not df.empty:
+            # Filter to today only
+            today = _pd.Timestamp(_date.today())
+            df_today = df[df.index.date == today.date()]
+            if len(df_today) >= 5:
+                df = df_today
+            else:
+                # Fall back to last available date
+                last_date = df.index.date[-1]
+                df = df[df.index.date == last_date]
         if df is None or df.empty:
             await _send_embed(ctx, f"No data for {symbol} — run `!backfill 5 {symbol.lower()}` first.")
             return

@@ -1040,31 +1040,30 @@ html, body {
   color: #1a1a2e !important;
 }
 
-/* ── Backtest trade table ── */
+/* ── Backtest trade table (layered on top of .rt-table) ── */
 .bt-trades-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 10px;
   font-family: inherit;
 }
 .bt-trades-table th {
   text-align: left;
-  padding: 4px 5px;
+  padding: 5px 8px 5px 0;
   font-size: 9px;
   text-transform: uppercase;
-  color: #888;
+  color: var(--dim);
   border-bottom: 1px solid rgba(255,255,255,0.08);
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
 }
 .bt-trades-table td {
-  padding: 3px 5px;
+  padding: 6px 8px 6px 0;
   border-bottom: 1px solid rgba(255,255,255,0.04);
   white-space: nowrap;
-  color: #ccc;
+  color: var(--text);
 }
-.bt-trades-table tbody tr:hover {
-  background: rgba(79,142,247,0.06);
+.bt-trades-table tbody tr.rt-row:hover td {
+  background: rgba(79,142,247,0.08);
 }
 
 /* Old desk-surface kept for layout compat */
@@ -1449,7 +1448,7 @@ html, body {
   .stats-grid   { grid-template-columns: repeat(2, 1fr); }
 
   /* Drawer: nearly full width */
-  .sim-drawer { width: min(400px, 92vw); right: calc(-1 * min(400px, 92vw) - 20px); }
+  .sim-drawer { width: min(600px, 92vw); right: calc(-1 * min(600px, 92vw) - 20px); }
 }
 
 /* ── Large phone (≤640px) ── */
@@ -1722,19 +1721,23 @@ html, body {
 /* ════════════════════════════════════════ SIM INSPECTOR DRAWER */
 .sim-drawer {
   position: fixed;
-  top: 0; right: -420px;
-  width: 400px;
+  top: 0; right: -620px;
+  width: 600px;
   height: 100vh;
   background: #f8f2e4;
   border-left: 3px solid #b89848;
   box-shadow: -6px 0 32px rgba(0,0,0,0.30);
-  transition: right 0.3s cubic-bezier(0.4,0,0.2,1);
+  transition: right 0.3s cubic-bezier(0.4,0,0.2,1), width 0.3s ease;
   z-index: 900;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 .sim-drawer.open { right: 0; }
+.sim-drawer.expanded {
+  width: min(900px, 85vw);
+  right: 0;
+}
 
 .drawer-backdrop {
   position: fixed;
@@ -2538,6 +2541,7 @@ html, body {
 .rt-pnl { font-weight: 700; font-family: monospace; }
 .rt-pnl.pos { color: var(--profit-text); }
 .rt-pnl.neg { color: var(--loss-text); }
+.rt-qty { font-family: monospace; font-size: 10px; color: var(--dim); font-weight: 600; }
 .rt-time { color: var(--dim); font-size: 10px; }
 .rt-chevron { color: var(--dim); font-size: 8px; padding-left: 4px; user-select: none; }
 .rt-expand-row td { padding: 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
@@ -2729,7 +2733,7 @@ html, body {
   border-radius: 3px;
 }
 .sym-chart-skeleton {
-  height: 130px;
+  height: 200px;
   margin: 4px 4px 2px;
 }
 

@@ -9,7 +9,7 @@ from interface.watchers import (
     auto_trader, conviction_watcher, forecast_watcher, heart_monitor,
     prediction_grader, opportunity_watcher, preopen_check_loop,
     eod_open_trade_report_loop, option_chain_health_loop, emergency_exit_loop,
-    backfill_watcher,
+    backfill_watcher, weight_reoptimizer_loop,
 )
 from simulation.sim_watcher import (
     sim_entry_loop, sim_exit_loop, sim_eod_report_loop, sim_daily_summary_loop,
@@ -75,6 +75,18 @@ class QQQBot(commands.Bot):
         except Exception as exc:
             logging.warning("trade_db_startup_sync_failed: %s", exc)
         print("Launching background systems...")
+        # Auto-backfill all symbol CSVs before recorder starts
+        try:
+            from core.data_service import startup_backfill_all
+            print("Running startup backfill for all symbols...")
+            backfill_results = await asyncio.to_thread(startup_backfill_all)
+            if backfill_results:
+                print(f"Startup backfill complete: {backfill_results}")
+            else:
+                print("Startup backfill: all CSVs up to date")
+        except Exception as e:
+            logging.warning("startup_backfill_failed: %s", e)
+            print(f"Startup backfill failed (non-fatal): {e}")
         if not hasattr(self, "recorder_thread"):
             self.recorder_thread = start_recorder_background()
         self._init_state()
@@ -146,6 +158,7 @@ class QQQBot(commands.Bot):
         T(S(option_chain_health_loop, self, EOD_REPORT_CHANNEL_ID))
         T(S(emergency_exit_loop))
         T(S(backfill_watcher))
+        T(S(weight_reoptimizer_loop))
 
     def _start_freshness_monitor(self):
         try:

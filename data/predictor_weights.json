@@ -1,141 +1,158 @@
 {
   "meta": {
-    "samples": 2222,
-    "overall_wr": 0.2921
+    "samples": 162527,
+    "overall_wr": 0.3001
   },
   "regime": {
     "COMPRESSION": {
-      "bearish": -0.629,
-      "bullish": 0.3222,
-      "range": 0.0387
+      "bearish": -0.0912,
+      "bullish": 0.0205,
+      "range": -1.1297
     },
     "NO_DATA": {
-      "bearish": -0.2939,
-      "bullish": -0.24
+      "bearish": -0.2667,
+      "bullish": -0.4364
     },
     "RANGE": {
-      "bearish": -0.0933,
-      "bullish": 0.2427,
-      "range": -0.2769
+      "bearish": -0.0381,
+      "bullish": -0.0526,
+      "range": -1.1812
     },
     "TREND": {
-      "bearish": -0.432,
-      "bullish": 0.1394,
-      "range": -0.1778
+      "bearish": 0.0104,
+      "bullish": 0.0105,
+      "range": -1.1595
     },
     "VOLATILE": {
-      "bearish": -0.6256,
-      "bullish": 0.1882,
-      "range": -0.6146
+      "bearish": 0.0273,
+      "bullish": 0.0333,
+      "range": -1.1663
     }
   },
   "session": {
     "AFTERNOON": {
-      "bearish": -0.3687,
-      "bullish": 0.008,
-      "range": -0.0372
+      "bearish": -0.0043,
+      "bullish": 0.0071,
+      "range": -0.7672
     },
     "MIDDAY": {
-      "bearish": -0.3456,
-      "bullish": 0.0232,
-      "range": -0.2051
+      "bearish": 0.0115,
+      "bullish": 0.031,
+      "range": -0.7848
     },
     "OPEN": {
-      "bearish": -0.1615,
-      "bullish": 0.1167
+      "bearish": 0.0441,
+      "bullish": 0.0238,
+      "range": -0.7713
     },
     "POWER": {
-      "bearish": -0.3901,
-      "bullish": 0.6129,
-      "range": -0.4114
+      "bearish": -0.0807,
+      "bullish": -0.0827,
+      "range": -0.7812
     }
   },
   "volatility": {
     "DEAD": {
-      "bearish": -0.3333,
-      "bullish": 0.2,
-      "range": -0.05
+      "bearish": -0.0879,
+      "bullish": -0.0502,
+      "range": -0.5811
     },
     "HIGH": {
-      "bearish": -0.306,
-      "bullish": 0.0009,
-      "range": -0.2
+      "bearish": 0.0383,
+      "bullish": 0.0316,
+      "range": -0.0667
     },
     "LOW": {
-      "bearish": -0.073,
-      "bullish": 0.2392,
-      "range": -0.1429
+      "bearish": -0.0279,
+      "bullish": -0.0396,
+      "range": -0.5901
     },
     "NORMAL": {
-      "bearish": -0.2168,
-      "bullish": 0.1437,
-      "range": -0.1525
+      "bearish": -0.013,
+      "bullish": 0.0104,
+      "range": -0.5747
     }
   },
   "regime_session": {
     "COMPRESSION_AFTERNOON": {
-      "bearish": -0.5122,
-      "bullish": -0.1024,
-      "range": 0.0
+      "bearish": -0.0613,
+      "bullish": 0.0137,
+      "range": -1.2962
     },
     "COMPRESSION_MIDDAY": {
-      "bearish": -0.7507,
-      "bullish": 0.0286,
-      "range": 0.2333
+      "bearish": -0.1104,
+      "bullish": 0.0658,
+      "range": -1.3649
+    },
+    "COMPRESSION_OPEN": {
+      "bearish": -0.0256,
+      "bullish": 0.0912,
+      "range": -0.3818
     },
     "COMPRESSION_POWER": {
-      "bearish": -0.6067,
-      "bullish": 1.2765,
-      "range": -0.0933
-    },
-    "NO_DATA_OPEN": {
-      "bearish": -0.3167,
-      "bullish": -0.2987
+      "bearish": -0.2004,
+      "bullish": -0.0795,
+      "range": -1.2916
     },
     "RANGE_AFTERNOON": {
-      "bearish": 0.035,
-      "bullish": -0.1105,
-      "range": 0.4308
+      "bearish": 0.0205,
+      "bullish": -0.0823,
+      "range": -1.3665
     },
     "RANGE_MIDDAY": {
-      "bearish": 0.12,
-      "bullish": 0.4356,
-      "range": 0.0
+      "bearish": -0.0266,
+      "bullish": 0.0306,
+      "range": -1.3755
+    },
+    "RANGE_OPEN": {
+      "bearish": 0.0319,
+      "bullish": 0.0362,
+      "range": -1.2026
     },
     "RANGE_POWER": {
-      "bearish": -0.4968,
-      "bullish": 0.4455,
-      "range": -0.7778
+      "bearish": -0.1785,
+      "bullish": -0.2367,
+      "range": -1.3871
     },
     "TREND_AFTERNOON": {
-      "bearish": -0.5174,
-      "bullish": 0.0184,
-      "range": -0.1167
+      "bearish": -0.0263,
+      "bullish": 0.0403,
+      "range": -1.3205
     },
     "TREND_MIDDAY": {
-      "bearish": -0.3534,
-      "bullish": -0.0594,
-      "range": 0.0
+      "bearish": 0.0435,
+      "bullish": 0.0614,
+      "range": -1.354
+    },
+    "TREND_OPEN": {
+      "bearish": 0.0624,
+      "bullish": 0.0387,
+      "range": -1.2133
     },
     "TREND_POWER": {
-      "bearish": -0.6656,
-      "bullish": 0.6708,
-      "range": -0.3
+      "bearish": -0.0532,
+      "bullish": -0.2269,
+      "range": -1.3623
     },
     "VOLATILE_AFTERNOON": {
-      "bearish": -0.81,
-      "bullish": 0.0667,
-      "range": -0.3182
+      "bearish": 0.0132,
+      "bullish": 0.0497,
+      "range": -1.3196
     },
     "VOLATILE_MIDDAY": {
-      "bearish": -0.7105,
-      "bullish": 0.041,
-      "range": -0.7304
+      "bearish": 0.0526,
+      "bullish": 0.0571,
+      "range": -1.369
+    },
+    "VOLATILE_OPEN": {
+      "bearish": 0.0917,
+      "bullish": 0.0405,
+      "range": -1.3385
     },
     "VOLATILE_POWER": {
-      "bearish": -0.5687,
-      "bullish": 1.0769,
-      "range": -0.4667
+      "bearish": -0.1447,
+      "bullish": -0.0606,
+      "range": -1.3595
     }
   }
 }

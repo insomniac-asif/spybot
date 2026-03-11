@@ -72,6 +72,41 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"], a
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
+@app.middleware("http")
+async def cache_and_security_headers(request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+
+    # Security headers on all responses
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Vary"] = "Accept-Encoding"
+
+    # Skip websocket upgrades
+    if request.headers.get("upgrade", "").lower() == "websocket":
+        return response
+
+    # API routes — never cache
+    if path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+        response.headers["CDN-Cache-Control"] = "no-store"
+        response.headers["Pragma"] = "no-cache"
+    # Static assets — cache aggressively (cache-busted via ?v= query param)
+    elif path.startswith("/static/") and not path.endswith(".html"):
+        response.headers["Cache-Control"] = "public, max-age=86400, immutable"
+        response.headers["CDN-Cache-Control"] = "public, max-age=604800"
+    # HTML pages — always revalidate
+    elif path == "/" or path.endswith(".html"):
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+        response.headers["CDN-Cache-Control"] = "no-cache"
+    # Fallback
+    else:
+        response.headers["Cache-Control"] = "no-cache"
+
+    return response
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -142,7 +177,7 @@ async def get_sim(sim_id: str):
 
 
 @app.get("/api/chart")
-async def get_chart(symbol: str = "SPY", bars: int = 60):
+async def get_chart(symbol: str = "SPY", bars: int = 480):
     """Return last N 1-min candles for a symbol using live data_service (never stale CSV)."""
     return await _handle_get_chart(symbol, bars)
 
@@ -157,7 +192,7 @@ async def get_predictions(symbol: str = None):
         if ts_col is None:
             return {"predictions": [], "latest": None}
 
-        df[ts_col] = pd.to_datetime(df[ts_col], errors="coerce")
+        df[ts_col] = pd.to_datetime(df[ts_col], format="mixed", errors="coerce")
         df = df.dropna(subset=[ts_col])
         df = df.sort_values(ts_col)
 
@@ -178,7 +213,7 @@ async def get_predictions(symbol: str = None):
         else:
             cutoff = pd.Timestamp(_today_date)
 
-        recent = df[df[ts_col] >= cutoff].tail(30)
+        recent = df[df[ts_col] >= cutoff]
 
         # If no predictions today, fall back to the last day that has data
         if recent.empty and not df.empty:
@@ -187,7 +222,7 @@ async def get_predictions(symbol: str = None):
                 _last_cutoff = pd.Timestamp(_last_date, tz=_et_tz)
             else:
                 _last_cutoff = pd.Timestamp(_last_date)
-            recent = df[df[ts_col] >= _last_cutoff].tail(30)
+            recent = df[df[ts_col] >= _last_cutoff]
 
         preds = []
         for _, row in recent.iterrows():
@@ -266,12 +301,19 @@ async def get_recent_trades(
 
 @app.get("/api/symbols")
 async def get_symbols():
-    """Return the symbol registry from sim_config.yaml."""
+    """Return all available symbols (from registry + convention-based CSV discovery)."""
     try:
-        import sys
+        import sys, glob as _glob
         sys.path.insert(0, BASE_DIR)
         from core.data_service import _load_symbol_registry
-        return _load_symbol_registry()
+        result = dict(_load_symbol_registry())
+        # Discover symbols from data/*_1m.csv convention
+        data_dir = os.path.join(BASE_DIR, "data")
+        for csv_path in sorted(_glob.glob(os.path.join(data_dir, "*_1m.csv"))):
+            sym = os.path.basename(csv_path).replace("_1m.csv", "").upper()
+            if sym not in result:
+                result[sym] = {"data_file": os.path.relpath(csv_path, BASE_DIR)}
+        return result
     except Exception:
         return {}
 
@@ -471,6 +513,39 @@ async def get_backtest_optimization(sim_id: str):
         return result_to_dict(result)
     except Exception as e:
         return {"error": f"Optimization failed: {e}"}
+
+
+# ---------------------------------------------------------------------------
+# Pattern endpoints
+# ---------------------------------------------------------------------------
+
+PATTERNS_DIR = os.path.join(BASE_DIR, "research", "patterns")
+
+
+@app.get("/api/patterns")
+async def list_patterns():
+    """Return list of sim IDs that have pattern data."""
+    if not os.path.isdir(PATTERNS_DIR):
+        return []
+    sims = []
+    for fname in sorted(os.listdir(PATTERNS_DIR)):
+        if fname.endswith("_patterns.json") and fname.startswith("SIM"):
+            sims.append(fname.replace("_patterns.json", ""))
+    return sims
+
+
+@app.get("/api/patterns/{sim_id}")
+async def get_patterns(sim_id: str):
+    """Return pattern data for a sim."""
+    sim_id = sim_id.upper()
+    path = os.path.join(PATTERNS_DIR, f"{sim_id}_patterns.json")
+    if not os.path.exists(path):
+        return {"error": "No pattern data. Run backtest first."}
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ---------------------------------------------------------------------------

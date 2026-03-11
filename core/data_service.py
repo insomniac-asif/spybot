@@ -330,12 +330,15 @@ def get_symbol_csv_path(symbol: str) -> str | None:
     """Return absolute path to the per-symbol candle CSV, or None."""
     registry = _load_symbol_registry()
     entry = registry.get(symbol.upper())
-    if not entry:
-        return None
-    rel = entry.get("data_file", "")
-    if not rel:
-        return None
-    return os.path.join(BASE_DIR, rel) if not os.path.isabs(rel) else rel
+    if entry:
+        rel = entry.get("data_file", "")
+        if rel:
+            return os.path.join(BASE_DIR, rel) if not os.path.isabs(rel) else rel
+    # Convention fallback: data/{symbol}_1m.csv
+    fallback = os.path.join(DATA_DIR, f"{symbol.lower()}_1m.csv")
+    if os.path.exists(fallback):
+        return fallback
+    return None
 
 
 def get_candle_data(symbol: str, start: "datetime", end: "datetime") -> list[dict]:
@@ -431,6 +434,123 @@ def get_candle_data(symbol: str, start: "datetime", end: "datetime") -> list[dic
         return []
 
 
+def startup_backfill_all():
+    """
+    Auto-backfill all symbol CSVs at bot startup.
+    For each symbol CSV, checks the last timestamp. If there's a gap
+    (data older than today during market hours, or older than last trading day),
+    fetches fresh bars from Alpaca and appends them.
+    Returns dict of {symbol: bars_added}.
+    """
+    import glob as _glob
+    eastern = pytz.timezone("US/Eastern")
+    now = datetime.now(eastern)
+    today = now.date()
+    results = {}
+
+    # Discover all symbol CSVs
+    symbol_paths = {}
+    for csv_path in sorted(_glob.glob(os.path.join(DATA_DIR, "*_1m.csv"))):
+        sym = os.path.basename(csv_path).replace("_1m.csv", "").upper()
+        symbol_paths[sym] = csv_path
+
+    if not symbol_paths:
+        return results
+
+    client = get_client()
+    if client is None:
+        print("startup_backfill: No Alpaca client, skipping")
+        return results
+
+    for sym, csv_path in symbol_paths.items():
+        try:
+            if not os.path.exists(csv_path):
+                continue
+
+            # Read last timestamp from CSV (fast: read last line)
+            last_ts_str = None
+            try:
+                with open(csv_path, "rb") as f:
+                    try:
+                        f.seek(-2, os.SEEK_END)
+                        while f.tell() > 0:
+                            if f.read(1) == b"\n":
+                                break
+                            f.seek(-2, os.SEEK_CUR)
+                    except OSError:
+                        f.seek(0)
+                    last_line = f.readline().decode("utf-8", errors="ignore").strip()
+                if last_line and not last_line.lower().startswith("timestamp"):
+                    last_ts_str = last_line.split(",")[0].strip()
+            except Exception:
+                continue
+
+            if not last_ts_str:
+                continue
+
+            last_ts = pd.Timestamp(last_ts_str)
+            if last_ts.tzinfo is None:
+                last_ts = eastern.localize(last_ts)
+            else:
+                last_ts = last_ts.astimezone(eastern)
+
+            last_date = last_ts.date()
+
+            # Skip if CSV already has today's data
+            if last_date >= today:
+                continue
+
+            # Fetch from last_date+1 through now
+            fetch_start = eastern.localize(
+                datetime.combine(last_date + timedelta(days=1), datetime.min.time()).replace(hour=4, minute=0)
+            )
+            fetch_end = now
+
+            if fetch_start >= fetch_end:
+                continue
+
+            print(f"  Backfilling {sym}: {last_date} -> {today}...")
+            rate_limit_sleep("alpaca_stock_bars", ALPACA_MIN_CALL_INTERVAL_SEC)
+            req = StockBarsRequest(
+                symbol_or_symbols=sym,
+                timeframe=TimeFrame(1, TimeFrameUnit("Min")),
+                start=fetch_start.astimezone(pytz.UTC),
+                end=fetch_end.astimezone(pytz.UTC),
+                feed=DataFeed.IEX,
+            )
+            bars = client.get_stock_bars(req)
+            fresh_df = getattr(bars, "df", None)
+            if fresh_df is None or fresh_df.empty:
+                continue
+
+            fresh_df = fresh_df.reset_index()
+            if "symbol" in fresh_df.columns:
+                fresh_df = fresh_df.drop(columns=["symbol"])
+            fresh_df["timestamp"] = pd.to_datetime(fresh_df["timestamp"], utc=True)
+            fresh_df["timestamp"] = fresh_df["timestamp"].dt.tz_convert("US/Eastern").dt.tz_localize(None)
+
+            csv_cols = ["timestamp", "open", "high", "low", "close", "volume"]
+            fresh_df = fresh_df[[c for c in csv_cols if c in fresh_df.columns]]
+
+            # Read existing, append, dedupe, write
+            existing = pd.read_csv(csv_path)
+            existing["timestamp"] = pd.to_datetime(existing["timestamp"], errors="coerce")
+            combined = pd.concat([existing[csv_cols], fresh_df], ignore_index=True)
+            combined = combined.sort_values("timestamp").drop_duplicates("timestamp", keep="last")
+            combined["timestamp"] = combined["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
+
+            tmp = csv_path + ".tmp"
+            combined.to_csv(tmp, index=False)
+            os.replace(tmp, csv_path)
+            results[sym] = len(fresh_df)
+            print(f"  {sym}: +{len(fresh_df)} bars (now {len(combined)} total, last={combined['timestamp'].iloc[-1]})")
+
+        except Exception as e:
+            print(f"  startup_backfill_failed: {sym} — {e}")
+
+    return results
+
+
 def backfill_symbol_csvs(min_bars: int = 100):
     """
     Check all symbols in the registry. For each, look at the last trading day
@@ -439,18 +559,21 @@ def backfill_symbol_csvs(min_bars: int = 100):
 
     Returns dict of {symbol: bars_written} for symbols that were backfilled.
     """
+    import glob as _glob
     eastern = pytz.timezone("US/Eastern")
-    registry = _load_symbol_registry()
     results = {}
 
-    # Build list: registry symbols + SPY
+    # Build list from registry + convention-based discovery
     symbol_paths = {}
+    registry = _load_symbol_registry()
     for sym, entry in registry.items():
         rel = entry.get("data_file", "")
         if rel:
             symbol_paths[sym.upper()] = os.path.join(BASE_DIR, rel) if not os.path.isabs(rel) else rel
-    if "SPY" not in symbol_paths:
-        symbol_paths["SPY"] = DATA_FILE
+    for csv_path in _glob.glob(os.path.join(DATA_DIR, "*_1m.csv")):
+        sym = os.path.basename(csv_path).replace("_1m.csv", "").upper()
+        if sym not in symbol_paths:
+            symbol_paths[sym] = csv_path
 
     for sym, csv_path in symbol_paths.items():
         try:
@@ -501,7 +624,7 @@ def backfill_symbol_csvs(min_bars: int = 100):
             before = df[df["timestamp"].dt.date < last_date]
             result = pd.concat([before, fresh_df], ignore_index=True).sort_values("timestamp")
             result.to_csv(csv_path, index=False)
-            results[sym] = len(fresh_df)
+            results[sym] = {"bars": len(fresh_df), "date": last_date}
             logging.error("backfill_complete: %s got %d bars for %s (was %d)", sym, len(fresh_df), last_date, len(day_bars))
 
         except Exception as e:

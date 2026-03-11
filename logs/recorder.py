@@ -208,12 +208,20 @@ def save_candle_for(symbol: str):
 
 def run_recorder():
     """
-    Continuous recorder loop — records ALL symbols from the registry.
-    Falls back to SPY-only if registry is unavailable.
+    Continuous recorder loop — records ALL symbols from the registry
+    or discovered via data/*_1m.csv convention.
     """
+    import glob as _glob
     registry = _load_symbol_registry()
-    symbols  = list(registry.keys()) if registry else ["SPY"]
-    print(f"Recorder started for: {', '.join(symbols)}")
+    symbols  = list(registry.keys()) if registry else []
+    # Discover symbols from convention-based CSVs
+    for csv_path in _glob.glob(os.path.join(DATA_DIR, "*_1m.csv")):
+        sym = os.path.basename(csv_path).replace("_1m.csv", "").upper()
+        if sym not in symbols:
+            symbols.append(sym)
+    if not symbols:
+        symbols = ["SPY"]
+    print(f"Recorder started for: {', '.join(sorted(symbols))}")
 
     # Dedupe all files at startup
     for sym in symbols:

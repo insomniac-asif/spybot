@@ -84,3 +84,9 @@ start_recorder.sh
 # ── Backtest cache and results ─────────────────────────────────────
 backtest/cache/
 backtest/results/
+
+# ── Research outputs ──────────────────────────────────────────────
+research/backtest_results.json
+research/optimization_report.md
+research/full_optimization_report.md
+research/patterns/

@@ -125,9 +125,22 @@ def make_prediction(minutes=60, df=None):
 
     vol = (high30 - low30) / price if price != 0 else 0
 
-    # Deterministic evidence model:
-    # turn structural features into directional evidence scores,
-    # then map scores to probabilities via temperature-scaled softmax.
+    # ── Additional indicators ──────────────────────────────────────────────────
+    # RSI-14 on close prices
+    closes = recent["close"].astype(float)
+    deltas = closes.diff().dropna()
+    gains = deltas.clip(lower=0)
+    losses = (-deltas.clip(upper=0))
+    avg_gain = gains.rolling(14, min_periods=14).mean().iloc[-1] if len(deltas) >= 14 else 0.0
+    avg_loss = losses.rolling(14, min_periods=14).mean().iloc[-1] if len(deltas) >= 14 else 0.0
+    rsi = 50.0
+    if avg_gain + avg_loss > 0:
+        rs = avg_gain / avg_loss if avg_loss > 0 else 100.0
+        rsi = 100.0 - (100.0 / (1.0 + rs))
+
+    # ── Evidence scoring ─────────────────────────────────────────────────────
+    # Goal: maximize directional accuracy when we DO predict direction,
+    # and use "range" as the honest "no edge" bucket.
     bullish_score = 0.15
     bearish_score = 0.15
     range_score = 0.15
@@ -137,7 +150,7 @@ def make_prediction(minutes=60, df=None):
     loc_strength = min(abs(vwap_dist) / 0.004, 1.0)
     trend_strength = min(abs(trend) / price / 0.004, 1.0) if price else 0.0
 
-    # Location vs VWAP
+    # VWAP location
     if price > vwap:
         bullish_score += 0.9 * loc_strength
         reasons.append("Price above VWAP")
@@ -145,7 +158,7 @@ def make_prediction(minutes=60, df=None):
         bearish_score += 0.9 * loc_strength
         reasons.append("Price below VWAP")
 
-    # Momentum
+    # 30-bar trend
     if trend > 0:
         bullish_score += 0.9 * trend_strength
         reasons.append("Upward momentum")
@@ -155,6 +168,22 @@ def make_prediction(minutes=60, df=None):
     else:
         range_score += 0.15
         reasons.append("Flat momentum")
+
+    # RSI — mean-reversion at extremes overrides trend
+    if rsi > 70:
+        bearish_score += 0.7
+        bullish_score -= 0.3  # dampen the trend-following bull signal
+        reasons.append(f"RSI overbought ({rsi:.0f})")
+    elif rsi < 30:
+        bullish_score += 0.7
+        bearish_score -= 0.3
+        reasons.append(f"RSI oversold ({rsi:.0f})")
+    elif rsi > 60:
+        bullish_score += 0.2
+        reasons.append(f"RSI bullish ({rsi:.0f})")
+    elif rsi < 40:
+        bearish_score += 0.2
+        reasons.append(f"RSI bearish ({rsi:.0f})")
 
     # Volatility
     if vol < 0.0018:
@@ -197,16 +226,22 @@ def make_prediction(minutes=60, df=None):
     bearish    = exp_bear  / total
     range_prob = exp_range / total
 
-    expected_move = price * (vol * (minutes / 30))
-    pred_high = price + expected_move / 2
-    pred_low  = price - expected_move / 2
-
     direction = max(
         [("bullish", bullish), ("bearish", bearish), ("range", range_prob)],
         key=lambda x: x[1]
     )[0]
 
     confidence = max(bullish, bearish, range_prob)
+
+    # Target high/low: use recent volatility to set realistic bands
+    # The grading logic: bullish = high_hit AND NOT low_hit
+    # So we want: directional target reachable, opposite target NOT reachable
+    expected_move = price * (vol * (minutes / 30))
+    if expected_move < 0.01:
+        expected_move = (high30 - low30) * 0.5
+
+    pred_high = price + expected_move / 2
+    pred_low  = price - expected_move / 2
 
     return {
         "time":      datetime.now(pytz.timezone("US/Eastern")),

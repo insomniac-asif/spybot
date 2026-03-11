@@ -50,35 +50,39 @@ def check_symbol_csvs() -> tuple[list[str], list[str]]:
     errors: list[str] = []
     warnings: list[str] = []
 
-    try:
-        import yaml
-        _base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        cfg_path = os.path.join(_base, "simulation", "sim_config.yaml")
-        with open(cfg_path) as f:
-            cfg = yaml.safe_load(f) or {}
-        registry: dict = cfg.get("symbols") or {}
-    except Exception as e:
-        warnings.append(f"symbol_registry_load_failed:{e}")
-        return errors, warnings
-
-    if not registry:
-        warnings.append("symbol_registry_empty")
-        return errors, warnings
-
+    import glob as _glob
     _base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     now = datetime.now(pytz.timezone("US/Eastern"))
     stale_cutoff = now - timedelta(days=SYMBOL_CSV_STALE_DAYS)
 
-    for symbol, entry in registry.items():
-        if not isinstance(entry, dict):
-            continue
-        rel_path = entry.get("data_file", "")
-        if not rel_path:
-            msg = f"symbol_csv_no_path:{symbol}"
-            (errors if symbol in SYMBOL_CSV_CRITICAL else warnings).append(msg)
-            continue
+    # Build symbol -> csv_path map from registry + convention-based discovery
+    symbol_csv_map: dict[str, str] = {}
+    try:
+        import yaml
+        cfg_path = os.path.join(_base, "simulation", "sim_config.yaml")
+        with open(cfg_path) as f:
+            cfg = yaml.safe_load(f) or {}
+        registry: dict = cfg.get("symbols") or {}
+        for symbol, entry in registry.items():
+            if isinstance(entry, dict):
+                rel_path = entry.get("data_file", "")
+                if rel_path:
+                    symbol_csv_map[symbol.upper()] = os.path.join(_base, rel_path) if not os.path.isabs(rel_path) else rel_path
+    except Exception as e:
+        warnings.append(f"symbol_registry_load_failed:{e}")
 
-        csv_path = os.path.join(_base, rel_path) if not os.path.isabs(rel_path) else rel_path
+    # Convention fallback: discover data/*_1m.csv
+    data_dir = os.path.join(_base, "data")
+    for csv_file in sorted(_glob.glob(os.path.join(data_dir, "*_1m.csv"))):
+        sym = os.path.basename(csv_file).replace("_1m.csv", "").upper()
+        if sym not in symbol_csv_map:
+            symbol_csv_map[sym] = csv_file
+
+    if not symbol_csv_map:
+        warnings.append("symbol_csvs_none_found")
+        return errors, warnings
+
+    for symbol, csv_path in symbol_csv_map.items():
 
         if not os.path.exists(csv_path):
             msg = f"symbol_csv_missing:{symbol}:{rel_path}"

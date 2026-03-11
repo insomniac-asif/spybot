@@ -274,7 +274,7 @@ async def forecast_watcher(bot, forecast_channel_id):
             eastern = pytz.timezone("US/Eastern")
             now = datetime.now(eastern)
 
-            slot_minute = 0 if now.minute < 30 else 30
+            slot_minute = (now.minute // 10) * 10
             slot_time = now.replace(minute=slot_minute, second=0, microsecond=0)
             if last_logged_slot is None or slot_time > last_logged_slot:
                 df = await asyncio.to_thread(get_market_dataframe)
@@ -381,6 +381,30 @@ async def backfill_watcher():
             results = await asyncio.to_thread(backfill_symbol_csvs)
             if results:
                 logging.error("backfill_watcher_done: %s", results)
+                # Generate predictions for corrected dates
+                try:
+                    corrected_syms = list(results.keys())
+                    corrected_dates = [v["date"] for v in results.values() if isinstance(v, dict) and "date" in v]
+                    if corrected_dates:
+                        earliest = str(min(corrected_dates))
+                        from scripts.backfill_predictions import (
+                            backfill_all_symbols_chronological, _load_existing_keys,
+                        )
+                        from analytics.prediction_stats import PRED_FILE, PRED_HEADERS
+                        existing = await asyncio.to_thread(_load_existing_keys, PRED_FILE)
+                        new_rows = await asyncio.to_thread(
+                            backfill_all_symbols_chronological,
+                            corrected_syms, earliest, existing,
+                        )
+                        if new_rows:
+                            import csv
+                            with open(PRED_FILE, "a", newline="") as f:
+                                writer = csv.DictWriter(f, fieldnames=PRED_HEADERS)
+                                writer.writerows(new_rows)
+                            logging.error("backfill_predictions_done: %d predictions for %s from %s",
+                                          len(new_rows), corrected_syms, earliest)
+                except Exception as e:
+                    logging.error("backfill_predictions_error: %s", e, exc_info=True)
         except Exception as e:
             logging.error("backfill_watcher_error: %s", e, exc_info=True)
         await asyncio.sleep(30)
@@ -510,4 +534,57 @@ async def option_chain_health_loop(bot, channel_id: int):
             last_run_hour = (now_et.date(), now_et.hour)
         except Exception:
             logging.exception("option_chain_health_loop_error")
+        await asyncio.sleep(30)
+
+
+async def weight_reoptimizer_loop():
+    """
+    Post-market weight reoptimizer. Runs once per trading day at 16:15 ET.
+    If the total graded prediction count is divisible by 250, recompute
+    predictor weights from the full graded history.
+    """
+    last_run_date = None
+    last_optimized_count = None
+    eastern = pytz.timezone("America/New_York")
+    target_time = dtime(16, 15)
+    while True:
+        try:
+            now_et = datetime.now(eastern)
+            if now_et.weekday() > 4:
+                await asyncio.sleep(300)
+                continue
+            if now_et.time() < target_time:
+                await asyncio.sleep(30)
+                continue
+            if last_run_date == now_et.date():
+                await asyncio.sleep(300)
+                continue
+
+            last_run_date = now_et.date()
+
+            pred_file = os.path.join(DATA_DIR, "predictions.csv")
+            if not os.path.exists(pred_file):
+                continue
+
+            df = await asyncio.to_thread(
+                pd.read_csv, pred_file, usecols=["checked"],
+            )
+            total_graded = int((df["checked"] == True).sum())
+
+            if total_graded > 0 and total_graded % 250 == 0 and total_graded != last_optimized_count:
+                from analytics.predictor_optimizer import update_predictor_weights
+                weights = await asyncio.to_thread(update_predictor_weights)
+                last_optimized_count = total_graded
+                wr = weights.get("meta", {}).get("overall_wr", 0) if weights else 0
+                logging.error(
+                    "weight_reoptimizer: reoptimized at %d graded predictions, WR=%.1f%%",
+                    total_graded, wr * 100,
+                )
+            else:
+                logging.error(
+                    "weight_reoptimizer: %d graded (not divisible by 250, skipping)",
+                    total_graded,
+                )
+        except Exception:
+            logging.exception("weight_reoptimizer_error")
         await asyncio.sleep(30)

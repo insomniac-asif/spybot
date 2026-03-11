@@ -57,7 +57,7 @@ const STRATEGY_DESCRIPTIONS = {
 const POLL_INTERVAL = 30000; // 30s
 let symbolCharts = {};   // { SPY: ApexChartsInstance, ... }
 let _focusedSym = null;
-const FOCUSED_CHART_H = 300;
+const FOCUSED_CHART_H = 450;
 let perfChart = null;
 let simsCache = [];
 let currentSimId = null;
@@ -573,6 +573,7 @@ function renderRecentTrades(panel) {
       <td><span class="sym-badge sym-${t.symbol}">${t.symbol}</span></td>
       <td><span class="dir-badge ${dir}">${dir || '—'}</span></td>
       <td class="rt-contract">${strike} ${ctShort} ${expiry}</td>
+      <td class="rt-qty">${t.qty ?? 1}x</td>
       <td class="rt-price">${entryP}</td>
       <td class="rt-price">${exitP}</td>
       <td class="rt-pnl ${pnlCls}">${isOpen ? '<span style="color:var(--dim);font-style:italic">open</span>' : pnlStr}</td>
@@ -580,14 +581,13 @@ function renderRecentTrades(panel) {
       <td class="rt-chevron">▶</td>
     </tr>
     <tr class="rt-expand-row hidden" id="${expandId}">
-      <td colspan="9">
+      <td colspan="10">
         <div class="rt-expand-grid">
           <div class="rt-expand-item"><span class="rt-el">SL</span><span class="rt-ev neg">${slStr}</span></div>
           <div class="rt-expand-item"><span class="rt-el">TP</span><span class="rt-ev pos">${tpStr}</span></div>
           ${pnlPct != null ? `<div class="rt-expand-item"><span class="rt-el">P&L%</span><span class="rt-ev ${pnlCls}">${pnlSign}${pnlPct}%</span></div>` : ''}
           <div class="rt-expand-item"><span class="rt-el">Entry Time</span><span class="rt-ev">${entryTime}</span></div>
           ${holdStr ? `<div class="rt-expand-item"><span class="rt-el">Held</span><span class="rt-ev">${holdStr}</span></div>` : ''}
-          <div class="rt-expand-item"><span class="rt-el">Qty</span><span class="rt-ev">${t.qty ?? '—'}</span></div>
           ${t.regime ? `<div class="rt-expand-item"><span class="rt-el">Regime</span><span class="rt-ev">${t.regime}</span></div>` : ''}
           ${!isOpen ? `<div class="rt-expand-item"><span class="rt-el">Exit Reason</span><span class="rt-ev">${t.exit_reason || '—'}</span></div>` : ''}
           ${t.exit_context ? `<div class="rt-expand-item rt-expand-wide"><span class="rt-el">Detail</span><span class="rt-ev">${t.exit_context}</span></div>` : ''}
@@ -614,7 +614,7 @@ function renderRecentTrades(panel) {
       <div class="rt-scroll">
         <table class="rt-table">
           <thead><tr>
-            <th>Sim</th><th>Symbol</th><th>Dir</th><th>Contract</th>
+            <th>Sim</th><th>Symbol</th><th>Dir</th><th>Contract</th><th>Qty</th>
             <th>Entry</th><th>Exit</th><th>P&L</th><th>Time</th><th></th>
           </tr></thead>
           <tbody>${rows}</tbody>
@@ -654,6 +654,15 @@ function toggleRtExpand(expandId, rowEl) {
   expandRow.classList.toggle('hidden', isOpen);
   const chevron = rowEl.querySelector('.rt-chevron');
   if (chevron) chevron.textContent = isOpen ? '▶' : '▼';
+}
+
+function toggleDrawerExpand() {
+  const drawer = document.querySelector('.sim-drawer');
+  const label = document.getElementById('bt-expand-label');
+  if (!drawer) return;
+  const isExpanded = drawer.classList.contains('expanded');
+  drawer.classList.toggle('expanded', !isExpanded);
+  if (label) label.textContent = isExpanded ? 'Expand' : 'Collapse';
 }
 
 // ─────────────────────────────────────────────── CLASSROOM RENDERING
@@ -2192,21 +2201,49 @@ function toETMs(t) {
 function _makeApexOptions(sym, height) {
   return {
     chart: {
-      type: 'line',
+      type: 'candlestick',
       height,
       background: 'transparent',
       toolbar: { show: false },
       animations: { enabled: false },
       foreColor: '#99bb99',
       sparkline: { enabled: false },
+      events: {
+        updated: function(chartCtx) {
+          // Draw prediction lines as SVG after chart renders
+          const c = chartCtx;
+          if (!c._predLines || !c._predLines.length) return;
+          const el = c.el.querySelector('.apexcharts-plot-area');
+          if (!el) return;
+          // Remove old prediction lines
+          el.querySelectorAll('.pred-line').forEach(l => l.remove());
+          const w = c.w;
+          const xScale = w.globals.gridWidth / (w.globals.maxX - w.globals.minX);
+          const yScale = w.globals.gridHeight / (w.globals.maxY - w.globals.minY);
+          const gLeft = w.globals.gridRect?.x || 0;
+          const gTop = w.globals.gridRect?.y || 0;
+          c._predLines.forEach(p => {
+            const x1 = (p.t0 - w.globals.minX) * xScale;
+            const x2 = (p.t1 - w.globals.minX) * xScale;
+            const py = w.globals.gridHeight - (p.y - w.globals.minY) * yScale;
+            if (x1 < 0 || x2 > w.globals.gridWidth + 10 || py < -5 || py > w.globals.gridHeight + 5) return;
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('class', 'pred-line');
+            line.setAttribute('x1', x1);
+            line.setAttribute('x2', x2);
+            line.setAttribute('y1', py);
+            line.setAttribute('y2', py);
+            line.setAttribute('stroke', p.bull ? '#44ddaa' : '#ee6666');
+            line.setAttribute('stroke-width', '2');
+            line.setAttribute('stroke-dasharray', p.bull ? '0' : '5,3');
+            line.setAttribute('opacity', '0.85');
+            el.appendChild(line);
+          });
+        },
+      },
     },
-    series: [
-      { name: 'price',      type: 'candlestick', data: [] },
-      { name: 'pred_cur',   type: 'line',        data: [] },
-      { name: 'pred_prev',  type: 'line',        data: [] },
-    ],
-    stroke: { width: [1, 1.5, 1.5], dashArray: [0, 4, 4], curve: 'straight' },
-    colors: ['transparent', '#4499ff', '#aa66ff'],
+    series: [{ name: 'price', data: [] }],
+    stroke: { width: 1 },
     xaxis: {
       type: 'datetime',
       labels: {
@@ -2235,11 +2272,7 @@ function _makeApexOptions(sym, height) {
         wick: { useFillColor: true },
       },
     },
-    markers: {
-      size: [0, 5, 5],
-      strokeWidth: 0,
-      hover: { size: 6 },
-    },
+    markers: { size: 0 },
     legend: { show: false },
     tooltip: {
       theme: 'dark',
@@ -2291,7 +2324,7 @@ function focusSymbol(sym) {
   const allBtn = document.getElementById('sym-all-btn');
   if (allBtn) allBtn.classList.remove('hidden');
   const titleEl = document.getElementById('chalk-overview-title');
-  if (titleEl) titleEl.textContent = `${sym} · 1-MIN · LAST 60 BARS`;
+  if (titleEl) titleEl.textContent = `${sym} · 1-MIN · TODAY`;
   if (symbolCharts[sym]) symbolCharts[sym].updateOptions({ chart: { height: FOCUSED_CHART_H } }, false, false);
 }
 
@@ -2304,8 +2337,8 @@ function unfocusSymbol() {
   const allBtn = document.getElementById('sym-all-btn');
   if (allBtn) allBtn.classList.add('hidden');
   const titleEl = document.getElementById('chalk-overview-title');
-  if (titleEl) titleEl.textContent = 'MARKET OVERVIEW · 1-MIN · LAST 60 BARS';
-  const chartH = window.innerWidth <= 480 ? 90 : window.innerWidth <= 900 ? 110 : 130;
+  if (titleEl) titleEl.textContent = 'MARKET OVERVIEW · 1-MIN · TODAY';
+  const chartH = window.innerWidth <= 480 ? 140 : window.innerWidth <= 900 ? 170 : 200;
   if (prev && symbolCharts[prev]) symbolCharts[prev].updateOptions({ chart: { height: chartH } }, false, false);
 }
 
@@ -2342,7 +2375,7 @@ async function initSymbolCharts() {
   await new Promise(r => setTimeout(r, 60));
   grid.innerHTML = '';
 
-  const chartH = window.innerWidth <= 480 ? 90 : window.innerWidth <= 900 ? 110 : 130;
+  const chartH = window.innerWidth <= 480 ? 140 : window.innerWidth <= 900 ? 170 : 200;
 
   symbols.forEach(sym => {
     const card = document.createElement('div');
@@ -2374,8 +2407,8 @@ async function fetchChartAndPredictions() {
 
   try {
     const fetches = symbols.flatMap(sym => [
-      fetch(`/api/chart?symbol=${sym}&bars=60`).then(r => r.json()).catch(() => ({ candles: [], symbol: sym })),
-      fetch(`/api/predictions?symbol=${sym}`).then(r => r.json()).catch(() => ({ predictions: [], latest: null })),
+      fetch(`/api/chart?symbol=${sym}&bars=1440&_t=${Date.now()}`).then(r => r.json()).catch(() => ({ candles: [], symbol: sym })),
+      fetch(`/api/predictions?symbol=${sym}&_t=${Date.now()}`).then(r => r.json()).catch(() => ({ predictions: [], latest: null })),
     ]);
     const results = await Promise.all(fetches);
 
@@ -2383,7 +2416,11 @@ async function fetchChartAndPredictions() {
       const sym      = symbols[i];
       const chartData = results[i * 2];
       const predData  = results[i * 2 + 1];
-      _updateSymbolCard(sym, chartData.candles || [], predData.predictions || []);
+      try {
+        _updateSymbolCard(sym, chartData.candles || [], predData.predictions || []);
+      } catch (e) {
+        console.warn(`chart update error ${sym}`, e);
+      }
     }
   } catch (e) {
     console.warn('symbol chart fetch error', e);
@@ -2394,39 +2431,95 @@ function _updateSymbolCard(sym, candles, preds) {
   const chart = symbolCharts[sym];
   if (!chart) return;
 
-  const PRED_DUR = 30 * 60 * 1000; // 30 min in ms
-
-  // Only show a prediction after its 30-min window has elapsed
-  const THIRTY_MIN_MS = 30 * 60 * 1000;
-  const now = Date.now();
-  const sorted = [...(preds || [])].sort((a, b) => new Date(b.time) - new Date(a.time));
-  // latestPred = most recent prediction that is ≥30 min old (completed window)
-  const latestPred = sorted.find(p => (now - new Date(p.time).getTime()) >= THIRTY_MIN_MS) || null;
-  // prevPred = most recent completed prediction that is ≥30 min older than latestPred
-  const prevPred = latestPred
-    ? (sorted.find(p => new Date(latestPred.time) - new Date(p.time) >= THIRTY_MIN_MS) || null)
-    : null;
-
-  function predSegment(p) {
-    if (!p) return [];
-    const dir = (p.direction || '').toUpperCase();
-    const priceVal = dir === 'BULLISH' ? p.high : dir === 'BEARISH' ? p.low : null;
-    if (priceVal == null) return [];
-    const t0 = toETMs(p.time);
-    const t1 = t0 + PRED_DUR;
-    const y = parseFloat(priceVal);
-    return [{ x: t0, y }, { x: t1, y }];
-  }
+  const PRED_DUR_MS = 10 * 60 * 1000; // 10 min prediction window
 
   const candleSeries = candles.map(c => ({ x: toETMs(c.t), y: [c.o, c.h, c.l, c.c] }));
-  const curSeg  = predSegment(latestPred);
-  const prevSeg = predSegment(prevPred);
 
-  chart.updateSeries([
-    { name: 'price',     type: 'candlestick', data: candleSeries },
-    { name: 'pred_cur',  type: 'line',        data: curSeg },
-    { name: 'pred_prev', type: 'line',        data: prevSeg },
-  ], true);
+  // Only show predictions that overlap with candle data we actually have
+  const lastCandleX = candleSeries.length > 0 ? candleSeries[candleSeries.length - 1].x : 0;
+
+  // Build prediction annotations — horizontal line at predicted price spanning 10-min window
+  // with ▲/▼ + price label in the middle
+  const predPoints = [];
+  (preds || []).forEach(p => {
+    const dir = (p.direction || '').toUpperCase();
+    const priceVal = dir === 'BULLISH' ? p.high : dir === 'BEARISH' ? p.low : null;
+    if (priceVal == null) return;
+    const t0 = toETMs(p.time);
+    const t1 = t0 + PRED_DUR_MS;
+    if (t0 > lastCandleX) return;
+    const y = parseFloat(priceVal);
+    const isBull = dir === 'BULLISH';
+    const color = isBull ? '#44ddaa' : '#ee6666';
+    const mid = t0 + PRED_DUR_MS / 2;
+    const arrow = isBull ? '▲' : '▼';
+
+    // Start point of line
+    predPoints.push({
+      x: t0, y,
+      marker: { size: 0 },
+      label: { text: '' },
+    });
+    // Middle — label with arrow + price
+    predPoints.push({
+      x: mid, y,
+      marker: { size: 3, fillColor: color, strokeColor: '#000', strokeWidth: 1 },
+      label: {
+        text: `${arrow} ${y.toFixed(1)}`,
+        offsetY: isBull ? -6 : 10,
+        borderWidth: 0,
+        style: {
+          background: 'transparent',
+          color: color,
+          fontSize: '8px',
+          fontWeight: 'bold',
+          padding: { left: 0, right: 0, top: 0, bottom: 0 },
+        },
+      },
+    });
+    // End point of line
+    predPoints.push({
+      x: t1, y,
+      marker: { size: 0 },
+      label: { text: '' },
+    });
+  });
+
+  // Store prediction data for SVG line drawing after render
+  chart._predLines = (preds || []).map(p => {
+    const dir = (p.direction || '').toUpperCase();
+    const priceVal = dir === 'BULLISH' ? p.high : dir === 'BEARISH' ? p.low : null;
+    if (priceVal == null) return null;
+    const t0 = toETMs(p.time);
+    if (t0 > lastCandleX) return null;
+    return { t0, t1: t0 + PRED_DUR_MS, y: parseFloat(priceVal), bull: dir === 'BULLISH' };
+  }).filter(Boolean);
+
+  // Use updateOptions to force x-axis range reset
+  const opts = {
+    series: [
+      { name: 'price', data: candleSeries },
+    ],
+    annotations: {
+      points: predPoints,
+    },
+  };
+  if (candleSeries.length > 0) {
+    // x-max = 4:00 PM ET so chart shows full session with empty space ahead
+    const firstX = candleSeries[0].x;
+    const closeMs = firstX - (firstX % 86400000) + (16 * 3600000);
+    opts.xaxis = {
+      type: 'datetime',
+      min: candleSeries[0].x,
+      max: closeMs,
+      labels: {
+        datetimeUTC: true,
+        style: { colors: '#88aa88', fontSize: '9px' },
+        datetimeFormatter: { hour: 'HH:mm', minute: 'HH:mm' },
+      },
+    };
+  }
+  chart.updateOptions(opts, false, false);
 
   if (candles.length) {
     const last  = candles[candles.length - 1];
@@ -2860,10 +2953,18 @@ function fmtDateTime(iso) {
   if (!iso) return '—';
   try {
     const d = new Date(iso);
-    const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const date = d.toLocaleDateString('en-US', { year: '2-digit', month: 'short', day: 'numeric' });
     const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
     return `${date} ${time}`;
   } catch { return iso.slice(0, 16) || iso; }
+}
+
+function fmtDateShort(iso) {
+  if (!iso) return '—';
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString('en-US', { year: '2-digit', month: 'short', day: 'numeric' });
+  } catch { return iso.slice(0, 10) || iso; }
 }
 
 // Close drawer on Escape
@@ -3389,7 +3490,12 @@ async function renderDrawerBacktestTab(simId) {
 
       <div id="bt-run-detail" style="display:none;margin-top:16px">
         <div id="bt-run-stats"></div>
-        <div id="bt-run-trades" style="margin-top:8px;max-height:400px;overflow-y:auto"></div>
+        <div style="display:flex;justify-content:flex-end;margin:4px 0">
+          <button class="bt-run-pill" style="font-size:10px;padding:3px 10px;border-color:#888;color:#888" onclick="toggleDrawerExpand()">
+            <span id="bt-expand-label">Expand</span>
+          </button>
+        </div>
+        <div id="bt-run-trades" style="margin-top:4px"></div>
       </div>
 
       <div class="session-label" style="padding:0 0 6px 2px;margin-top:20px;color:#f7d94f">STRATEGY OPTIMIZER</div>
@@ -3576,73 +3682,96 @@ function selectBtRun(runNum) {
     return;
   }
 
-  let rows = trades.map(t => {
+  let rows = trades.map((t, idx) => {
     const pnl = t.realized_pnl_dollars || t.pnl || 0;
     const pnlPct = ((t.pnl_pct || 0) * 100).toFixed(1);
     const isWin = pnl > 0;
-    const pnlColor = isWin ? '#4caf50' : '#f44336';
-    const pnlBg = isWin ? 'rgba(76,175,80,0.08)' : 'rgba(244,67,54,0.08)';
+    const pnlCls = isWin ? 'pos' : pnl < 0 ? 'neg' : '';
+    const pnlSign = isWin ? '+' : '';
+    const pnlStr = pnlSign + '$' + fmt2(Math.abs(pnl));
     const dir = (t.direction || '').toUpperCase();
     const callPut = dir.includes('BULL') ? 'CALL' : 'PUT';
-    const cpColor = callPut === 'CALL' ? '#4caf50' : '#f44336';
+    const ctShort = callPut === 'CALL' ? 'C' : 'P';
     const grade = _gradeTrade(t);
+    const symbol = t.symbol || 'SPY';
 
-    // Parse contract for strike & expiry: e.g. SPY240712P00549000
+    // Parse contract for strike & expiry
     const contract = t.option_symbol || t.contract || '';
-    let strike = '—', expiry = '—', symbol = t.symbol || 'SPY';
-    if (contract.length >= 15) {
-      const base = contract.replace(/^[A-Z]+/, '');
-      if (base.length >= 15) {
-        const yy = base.slice(0,2), mm = base.slice(2,4), dd = base.slice(4,6);
-        expiry = `20${yy}-${mm}-${dd}`;
-        const strikeRaw = parseInt(base.slice(7,15), 10);
-        strike = '$' + (strikeRaw / 1000).toFixed(0);
-      }
-    }
+    const opt = parseOptionSymbol(contract);
+    const strike = opt ? '$' + opt.strike : '—';
+    const expiry = opt ? opt.expiry : '—';
+    const contractDisplay = opt ? `${strike} ${ctShort} ${expiry}` : contract || '—';
 
-    // Date/time with year
+    // Date/time — full datetime for detail, short for summary
     const entryDt = t.entry_time || t.date || '';
     const exitDt = t.exit_time || '';
-    const entryStr = entryDt ? entryDt.slice(0, 16).replace('T', ' ') : '—';
-    const exitStr = exitDt ? exitDt.slice(11, 16) : '—';
+    const entryStr = entryDt ? fmtDateTime(entryDt) : '—';
+    const exitStr = exitDt ? fmtDateTime(exitDt) : '—';
+    const exitShort = exitDt ? fmtTime(exitDt) : '—';
+    const dateStr = entryDt ? fmtDateShort(entryDt) : '—';
 
     // Time held
     let held = '—';
     if (t.holding_seconds > 0) {
-      const m = Math.floor(t.holding_seconds / 60);
-      const s = t.holding_seconds % 60;
-      held = m > 0 ? `${m}m ${s}s` : `${s}s`;
+      const secs = t.holding_seconds;
+      const m = Math.floor(secs / 60), h = Math.floor(m / 60);
+      if (h > 0) held = `${h}h ${m % 60}m`;
+      else if (m > 0) held = `${m}m ${secs % 60}s`;
+      else held = `${secs}s`;
     } else if (entryDt && exitDt) {
       const secs = Math.max(0, Math.round((new Date(exitDt) - new Date(entryDt)) / 1000));
-      const m = Math.floor(secs / 60);
-      held = m > 0 ? `${m}m` : `${secs}s`;
+      const m = Math.floor(secs / 60), h = Math.floor(m / 60);
+      if (h > 0) held = `${h}h ${m % 60}m`;
+      else if (m > 0) held = `${m}m`;
+      else held = `${secs}s`;
     }
 
-    return `<tr style="background:${pnlBg}">
-      <td style="color:#888">${t.trade_num}</td>
-      <td style="font-size:10px;white-space:nowrap">${entryStr}</td>
-      <td>${symbol}</td>
-      <td style="color:${cpColor};font-weight:bold">${callPut}</td>
-      <td>${strike}</td>
-      <td style="font-size:10px">${expiry}</td>
-      <td>$${(t.entry_price||0).toFixed(2)}</td>
-      <td>$${(t.exit_price||0).toFixed(2)}</td>
-      <td style="color:${pnlColor};font-weight:bold">$${pnl.toFixed(2)}</td>
-      <td style="color:${pnlColor}">${pnlPct}%</td>
-      <td style="font-size:10px">${held}</td>
-      <td style="color:${grade.color};font-weight:bold">${grade.letter}</td>
+    const expandId = `bt-expand-${idx}`;
+    const balAfter = t.balance_after_trade || t.balance_after || 0;
+
+    return `
+    <tr class="rt-row ${pnlCls}" onclick="toggleRtExpand('${expandId}', this)">
+      <td class="rt-sim" style="color:#888">#${t.trade_num}</td>
+      <td><span class="sym-badge sym-${symbol}">${symbol}</span></td>
+      <td><span class="dir-badge ${dir}">${dir || '—'}</span></td>
+      <td class="rt-contract">${contractDisplay}</td>
+      <td class="rt-qty">${t.qty ?? 1}x</td>
+      <td class="rt-price">$${(t.entry_price||0).toFixed(2)}</td>
+      <td class="rt-price">$${(t.exit_price||0).toFixed(2)}</td>
+      <td class="rt-pnl ${pnlCls}">${pnlStr}</td>
+      <td class="rt-time" style="font-size:10px">${dateStr}</td>
+      <td style="color:${grade.color};font-weight:bold;font-size:10px">${grade.letter}</td>
+      <td class="rt-chevron">▶</td>
+    </tr>
+    <tr class="rt-expand-row hidden" id="${expandId}">
+      <td colspan="11">
+        <div class="rt-expand-grid">
+          <div class="rt-expand-item"><span class="rt-el">Entry Time</span><span class="rt-ev">${entryStr}</span></div>
+          <div class="rt-expand-item"><span class="rt-el">Exit Time</span><span class="rt-ev">${exitStr}</span></div>
+          <div class="rt-expand-item"><span class="rt-el">P&L %</span><span class="rt-ev ${pnlCls}">${pnlSign}${pnlPct}%</span></div>
+          <div class="rt-expand-item"><span class="rt-el">Held</span><span class="rt-ev">${held}</span></div>
+          <div class="rt-expand-item"><span class="rt-el">Balance</span><span class="rt-ev">$${fmt2(balAfter)}</span></div>
+          <div class="rt-expand-item"><span class="rt-el">Strike</span><span class="rt-ev">${strike}</span></div>
+          <div class="rt-expand-item"><span class="rt-el">Expiry</span><span class="rt-ev">${expiry}</span></div>
+          ${t.regime ? `<div class="rt-expand-item"><span class="rt-el">Regime</span><span class="rt-ev">${t.regime}</span></div>` : ''}
+          <div class="rt-expand-item"><span class="rt-el">Exit Reason</span><span class="rt-ev">${t.exit_reason || '—'}</span></div>
+          ${t.signal_mode ? `<div class="rt-expand-item"><span class="rt-el">Strategy</span><span class="rt-ev">${t.signal_mode}</span></div>` : ''}
+          <div class="rt-expand-item"><span class="rt-el">Grade</span><span class="rt-ev" style="color:${grade.color};font-weight:bold">${grade.letter}</span></div>
+        </div>
+      </td>
     </tr>`;
   }).join('');
 
   tradesEl.innerHTML = `
-    <table class="bt-trades-table">
+    <div class="rt-scroll">
+    <table class="rt-table bt-trades-table">
       <thead><tr>
-        <th>#</th><th>Date/Time</th><th>Sym</th><th>Type</th><th>Strike</th><th>Expiry</th>
-        <th>Entry</th><th>Exit</th><th>PnL</th><th>PnL%</th><th>Held</th><th>Grade</th>
+        <th>#</th><th>Symbol</th><th>Dir</th><th>Contract</th><th>Qty</th>
+        <th>Entry</th><th>Exit</th><th>P&L</th><th>Date</th><th>Grade</th><th></th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>
-  `;
+    </div>`;
 }
 
 function _gradeTrade(t) {

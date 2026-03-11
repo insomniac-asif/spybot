@@ -102,11 +102,11 @@ FVG_5M_AGG_MINUTES      = 5
 FVG_5M_MIN_GAP_PCT      = 0.0002
 FVG_5M_MAX_AGE_BARS     = 20
 FVG_5M_COOLDOWN_BARS    = 10
-FVG_5M_VOL_MULTIPLIER   = 1.0
+FVG_5M_VOL_MULTIPLIER   = 0.5  # was 1.0; allow zones from lower-vol 5M bars
 
 SWEEP_SWING_LOOKBACK      = 5
-SWEEP_CONFIRMATION_BARS   = 3
-SWEEP_MIN_BODY_RATIO      = 0.5
+SWEEP_CONFIRMATION_BARS   = 5  # was 3; wider window for confirmation close
+SWEEP_MIN_BODY_RATIO      = 0.3  # was 0.5; accept thinner reversal candles
 SWEEP_COOLDOWN_BARS       = 15
 SWEEP_MIN_BREAK_PCT       = 0.0001
 
@@ -115,9 +115,9 @@ COMBO_COOLDOWN_BARS  = 20
 
 FLOW_VWAP_SLOPE_LOOKBACK   = 10
 FLOW_VOL_SMA_LOOKBACK      = 20
-FLOW_VOL_SPIKE_THRESHOLD   = 1.5
+FLOW_VOL_SPIKE_THRESHOLD   = 1.2  # was 1.5; lower threshold for vol spike
 FLOW_MOMENTUM_LOOKBACK     = 10
-FLOW_MOMENTUM_MIN_ATR      = 0.5
+FLOW_MOMENTUM_MIN_ATR      = 0.3  # was 0.5; less extreme momentum needed
 FLOW_COOLDOWN_BARS         = 30
 
 
@@ -127,7 +127,7 @@ FLOW_COOLDOWN_BARS         = 30
 
 def _signal_fvg_4h(df) -> tuple:
     try:
-        if len(df) < FVG_4H_AGG_MINUTES * 4:
+        if len(df) < FVG_4H_AGG_MINUTES * 2:  # was *4 (960); now *2 (480) — fits within a day
             return None, None, {"reason": "insufficient_data"}
         close_col = _find_col(df, ["close", "Close"])
         high_col  = _find_col(df, ["high", "High"])
@@ -141,9 +141,16 @@ def _signal_fvg_4h(df) -> tuple:
             return None, None, {"reason": "insufficient_bars"}
         zones = _detect_fvg_zones(bars, FVG_4H_MIN_GAP_PCT, FVG_4H_MAX_AGE_BARS)
         current_close = float(df[close_col].iloc[-1])
+        # Compute ATR for proximity check
+        atr = sum(float(df[high_col].iloc[i]) - float(df[low_col].iloc[i])
+                  for i in range(-min(14, len(df)), 0)) / min(14, len(df))
         n = len(df)
         for zone in reversed(zones):
-            if zone["zone_bottom"] <= current_close <= zone["zone_top"]:
+            zone_mid = (zone["zone_top"] + zone["zone_bottom"]) / 2
+            # Signal on proximity: within zone OR within 1 ATR of zone boundary
+            in_zone = zone["zone_bottom"] <= current_close <= zone["zone_top"]
+            near_zone = abs(current_close - zone_mid) <= (zone["zone_top"] - zone["zone_bottom"]) / 2 + atr
+            if in_zone or near_zone:
                 d = zone["direction"]
                 if _check_cooldown("FVG_4H", d, n, FVG_4H_COOLDOWN_BARS):
                     _set_cooldown("FVG_4H", d, n)
@@ -173,9 +180,15 @@ def _signal_fvg_5m(df) -> tuple:
             bar_vol_map = {b["bar_index"]: b["volume"] for b in bars}
             zones = [z for z in zones if bar_vol_map.get(z["bar_index"], 0) >= vol_sma * FVG_5M_VOL_MULTIPLIER]
         current_close = float(df[close_col].iloc[-1])
+        # ATR for proximity
+        atr = sum(float(df[high_col].iloc[i]) - float(df[low_col].iloc[i])
+                  for i in range(-min(14, len(df)), 0)) / min(14, len(df))
         n = len(df)
         for zone in reversed(zones):
-            if zone["zone_bottom"] <= current_close <= zone["zone_top"]:
+            zone_mid = (zone["zone_top"] + zone["zone_bottom"]) / 2
+            in_zone = zone["zone_bottom"] <= current_close <= zone["zone_top"]
+            near_zone = abs(current_close - zone_mid) <= (zone["zone_top"] - zone["zone_bottom"]) / 2 + atr * 0.5
+            if in_zone or near_zone:
                 d = zone["direction"]
                 if _check_cooldown("FVG_5M", d, n, FVG_5M_COOLDOWN_BARS):
                     _set_cooldown("FVG_5M", d, n)
@@ -264,9 +277,16 @@ def _signal_fvg_sweep_combo(df) -> tuple:
         bars  = _aggregate_bars(df, close_col, high_col, low_col, open_col, vol_col, FVG_5M_AGG_MINUTES)
         zones = _detect_fvg_zones(bars, FVG_5M_MIN_GAP_PCT, FVG_5M_MAX_AGE_BARS)
         current_close = float(df[close_col].iloc[-1])
+        atr = sum(float(df[high_col].iloc[i]) - float(df[low_col].iloc[i])
+                  for i in range(-min(14, len(df)), 0)) / min(14, len(df))
         n = len(df)
         for zone in reversed(zones):
-            if zone["direction"] == sweep_dir and zone["zone_bottom"] <= current_close <= zone["zone_top"]:
+            if zone["direction"] != sweep_dir:
+                continue
+            zone_mid = (zone["zone_top"] + zone["zone_bottom"]) / 2
+            in_zone = zone["zone_bottom"] <= current_close <= zone["zone_top"]
+            near_zone = abs(current_close - zone_mid) <= (zone["zone_top"] - zone["zone_bottom"]) / 2 + atr * 0.5
+            if in_zone or near_zone:
                 if _check_cooldown("COMBO", sweep_dir, n, COMBO_COOLDOWN_BARS):
                     _set_cooldown("COMBO", sweep_dir, n)
                     return sweep_dir, current_close, {"signal": "fvg_sweep_combo"}
@@ -292,10 +312,19 @@ def _signal_flow_divergence(df) -> tuple:
         lows   = df[low_col].values
         n = len(df)
         current_close = float(closes[-1])
-        # Get baseline signal direction
+        # Get baseline signal direction (optional — enhances but no longer required)
         std_dir, _, _ = _signal_trend_pullback(df)
+        # If no baseline signal, infer direction from EMA slope
         if std_dir is None:
-            return None, None, {"reason": "no_baseline_signal"}
+            ema9_col = _find_col(df, ["ema9", "EMA9", "ema_9"])
+            ema20_col = _find_col(df, ["ema20", "EMA20", "ema_20"])
+            if ema9_col and ema20_col:
+                ema9 = float(df[ema9_col].iloc[-1])
+                ema20 = float(df[ema20_col].iloc[-1])
+                std_dir = "BULLISH" if ema9 > ema20 else "BEARISH"
+            else:
+                # Fallback: use price momentum direction
+                std_dir = "BULLISH" if current_close > float(closes[-11]) else "BEARISH"
         # VWAP slope
         vwap_slope_bullish = None
         if vwap_col:

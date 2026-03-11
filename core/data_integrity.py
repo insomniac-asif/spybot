@@ -1,5 +1,19 @@
+import calendar
+from datetime import date
+
 import pandas as pd
 import pytz
+
+# US equity early-close dates (market closes at 1:00 PM ET).
+_EARLY_CLOSE_DATES = set()
+for _y in range(2024, 2028):
+    _EARLY_CLOSE_DATES.add(date(_y, 7, 3))    # Day before Independence Day
+    _EARLY_CLOSE_DATES.add(date(_y, 12, 24))  # Christmas Eve
+    # Black Friday = day after Thanksgiving (4th Thursday of November)
+    _nov_cal = calendar.monthcalendar(_y, 11)
+    _thurs = [w[calendar.THURSDAY] for w in _nov_cal if w[calendar.THURSDAY] != 0]
+    if len(_thurs) >= 4:
+        _EARLY_CLOSE_DATES.add(date(_y, 11, _thurs[3] + 1))
 
 
 def validate_market_dataframe(df):
@@ -63,16 +77,21 @@ def validate_market_dataframe(df):
     # B) Timestamp continuity during RTH (09:30-16:00 America/New_York)
     eastern = pytz.timezone("America/New_York")
     if df.index.tz is None:
-        idx_eastern = df.index.tz_localize("UTC").tz_convert(eastern)
+        # Naive timestamps in this codebase are ET (America/New_York), not UTC
+        idx_eastern = df.index.tz_localize(eastern, ambiguous="infer", nonexistent="shift_forward")
     else:
         idx_eastern = df.index.tz_convert(eastern)
 
     df_eastern = df.copy()
     df_eastern.index = idx_eastern
 
+    _today = pd.Timestamp.now(tz=eastern).date()
     rth_df = df_eastern.between_time("09:30", "16:00")
     if not rth_df.empty:
         for session_date, session in rth_df.groupby(rth_df.index.date):
+            # Skip today (session still in progress) and early-close days
+            if session_date >= _today or session_date in _EARLY_CLOSE_DATES:
+                continue
             session_idx = session.index.sort_values()
             if session_idx.empty:
                 continue

@@ -88,8 +88,8 @@ def _signal_gap_fade(df) -> tuple:
     bar before it, and price has not yet filled the gap, signal a reversion.
     Fires only when price is still within ~30 bars of the gap event.
     """
-    GAP_MIN_PCT = 0.003
-    WINDOW = 30
+    GAP_MIN_PCT = 0.0015  # was 0.003; allow smaller intraday gaps
+    WINDOW = 15  # was 30; check sooner after gap forms
 
     try:
         if df is None or len(df) < WINDOW + 2:
@@ -287,10 +287,13 @@ def _signal_vol_compression_breakout(df) -> tuple:
         if atr_mean <= 0:
             return None, None, {"reason": "zero_atr_mean"}
 
-        if not (atr_prev < atr_mean * COMPRESSION_THRESHOLD):
+        # Check compression in prev 2 bars (was strictly prev bar only)
+        atr_prev2 = float(atr_vals[-3]) if len(atr_vals) >= 3 else atr_prev
+        compressed = atr_prev < atr_mean * COMPRESSION_THRESHOLD or atr_prev2 < atr_mean * COMPRESSION_THRESHOLD
+        if not compressed:
             return None, None, {"reason": "no_compression"}
 
-        if not (atr_now > atr_mean * 0.9):
+        if not (atr_now > atr_mean * 0.75):  # was 0.9; lowered for realistic expansion
             return None, None, {"reason": "no_expansion"}
 
         close_col = _find_col(df, ["close", "Close"])

@@ -54,7 +54,7 @@ async def _run_forecast_cycle(
             _sym_df = _sym_df_raw if not isinstance(_sym_df_raw, BaseException) else None
             if _sym_df is None or len(_sym_df) < 30:
                 continue
-            _sym_pred = make_prediction(30, _sym_df)
+            _sym_pred = make_prediction(10, _sym_df)
             if _sym_pred is None:
                 continue
             _sym_regime = get_regime(_sym_df)
@@ -92,10 +92,10 @@ async def _run_forecast_cycle(
         except (TypeError, ValueError):
             return "N/A"
 
-    # ── Single unified forecast embed — all symbols same format ──
+    # ── Single unified forecast embed — direction + confidence only ──
     _dir_emojis = {"bullish": "🟢", "bearish": "🔴", "range": "⚪"}
     overview_embed = discord.Embed(
-        title="📊 30-Min Forecast",
+        title="📊 10-Min Forecast",
         color=fcast_color
     )
     for _s, _p, _r, _v, _last_row in _all_preds:
@@ -104,23 +104,22 @@ async def _run_forecast_cycle(
         _emoji = _dir_emojis.get(_d, "⚪")
         _cur = f"${_safe_price(_last_row.get('close'))}"
         if _d == "bullish":
-            _price_label = "High"
+            _price_label = "Target"
             _price_val = f"${_safe_price(_p.get('high'))}"
             _price_color = "green"
         elif _d == "bearish":
-            _price_label = "Low"
+            _price_label = "Target"
             _price_val = f"${_safe_price(_p.get('low'))}"
             _price_color = "red"
         else:
-            _price_label = "High"
-            _price_val = f"${_safe_price(_p.get('high'))}"
+            _price_label = "Range"
+            _price_val = f"${_safe_price(_p.get('low'))}–{_safe_price(_p.get('high'))}"
             _price_color = "white"
         overview_embed.add_field(
             name=f"{_emoji} {_s}",
             value=ab(
-                f"{lbl('Dir')}   {A(_d.upper(), 'white', bold=True)}  {lbl('Conf')} {conf_col(_c)}",
-                f"{lbl('Reg')}   {A(_r or 'N/A', 'cyan')}  {lbl('Vol')}  {A(_v or 'N/A', 'yellow')}",
-                f"{lbl(_price_label)} {A(_price_val, _price_color, bold=True)}  {lbl('Now')} {A(_cur, 'white')}",
+                f"{lbl('Dir')}  {A(_d.upper(), _price_color, bold=True)}  {lbl('Conf')} {conf_col(_c)}",
+                f"{lbl(_price_label)} {A(_price_val, _price_color)}  {lbl('Now')} {A(_cur, 'white')}",
             ),
             inline=True
         )

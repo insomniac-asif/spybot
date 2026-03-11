@@ -2,41 +2,38 @@ _global:
   max_directional_sims: 4
   cross_sim_guard_enabled: true
   max_family_concurrent: 2
-  # ── Small-account compounding defaults ────────────────────────────
   small_account_mode: true
   default_balance_start: 500
   death_threshold: 25
   max_position_pct: 0.15
   max_risk_pct: 0.03
   max_daily_drawdown_pct: 0.06
-  # ── Greeks-aware exit defaults (all off; enable per-sim) ──────────
   theta_burn_enabled: false
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: false
   iv_crush_vega_multiplier: 2.0
   iv_crush_underlying_threshold_pct: 0.003
   delta_erosion_exit_enabled: false
-  delta_erosion_entry_min: 0.40
-  delta_erosion_current_max: 0.20
-
+  delta_erosion_entry_min: 0.4
+  delta_erosion_current_max: 0.2
 SIM00:
-  name: "Vol Expansion Trend (LIVE)"
+  name: Vol Expansion Trend (LIVE)
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "TREND_PULLBACK"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: TREND_PULLBACK
   features_enabled: true
-  execution_mode: "live"
+  execution_mode: live
   enabled: true
-  source_sim: "SIM11"
+  source_sim: SIM11
   min_source_trades: 50
   capital_limit_dollars: 1500
   dte_min: 1
@@ -44,11 +41,10 @@ SIM00:
   otm_pct: 0.01
   hold_min_seconds: 300
   hold_max_seconds: 7200
-  cutoff_time_et: "15:30"
+  cutoff_time_et: '15:30'
   balance_start: 25000
-  # SIM00 live account — larger capital; death_threshold is relative to capital_limit
   death_threshold: 200
-  max_position_pct: 0.20
+  max_position_pct: 0.2
   risk_per_trade_pct: 0.0075
   daily_loss_limit_pct: 0.03
   max_open_trades: 2
@@ -58,7 +54,7 @@ SIM00:
   entry_slippage: 0.01
   exit_slippage: 0.01
   stop_loss_pct: 0.35
-  profit_target_pct: 0.60
+  profit_target_pct: 0.6
   trailing_stop_activate_pct: 0.12
   trailing_stop_trail_pct: 0.06
   atr_expansion_min: 1.2
@@ -66,400 +62,402 @@ SIM00:
   iv_series_window: 200
   circuit_breaker:
     enabled: true
-    source_sim: "SIM11"
+    source_sim: SIM11
     rolling_window: 20
     min_win_rate: 0.35
     min_expectancy: -50.0
     recovery_win_rate: 0.45
     recovery_expectancy: 0.0
-
 SIM01:
-  name: "0DTE Scalp Mean Reversion"
+  name: 0DTE Scalp Mean Reversion
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "scalp"
-  signal_mode: "MEAN_REVERSION"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: scalp
+  signal_mode: MEAN_REVERSION
   features_enabled: false
   dte_min: 0
   dte_max: 0
   otm_pct: 0.008
   hold_min_seconds: 60
   hold_max_seconds: 300
-  cutoff_time_et: "13:30"
+  cutoff_time_et: '13:30'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.10
+  exposure_cap_pct: 0.2
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.25
-  profit_target_pct: 0.35
-  trailing_stop_activate_pct: null
-  trailing_stop_trail_pct: null
+  stop_loss_pct: 0.08
+  profit_target_pct: 0.15
+  trailing_stop_activate_pct: 0.05
+  trailing_stop_trail_pct: 0.03
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
-
+  theta_burn_stop_tighten_pct: 0.5
 SIM02:
-  name: "0DTE Scalp Breakout"
+  name: 0DTE Scalp Breakout
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "scalp"
-  signal_mode: "BREAKOUT"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: scalp
+  signal_mode: BREAKOUT
   features_enabled: false
   dte_min: 0
   dte_max: 0
-  otm_pct: 0.010
+  otm_pct: 0.01
   hold_min_seconds: 60
   hold_max_seconds: 600
-  cutoff_time_et: "13:30"
+  cutoff_time_et: '13:30'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.10
+  exposure_cap_pct: 0.2
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.25
-  profit_target_pct: 0.35
-  trailing_stop_activate_pct: null
-  trailing_stop_trail_pct: null
+  stop_loss_pct: 0.08
+  profit_target_pct: 0.15
+  trailing_stop_activate_pct: 0.05
+  trailing_stop_trail_pct: 0.03
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
-
+  theta_burn_stop_tighten_pct: 0.5
 SIM03:
-  name: "Intraday Trend Pullback"
+  name: Intraday Trend Pullback
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "TREND_PULLBACK"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: TREND_PULLBACK
   features_enabled: false
   dte_min: 0
   dte_max: 1
   otm_pct: 0.003
   hold_min_seconds: 600
   hold_max_seconds: 5400
-  cutoff_time_et: "15:00"
+  cutoff_time_et: '15:00'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 1
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.30
-  profit_target_pct: 0.55
-  trailing_stop_activate_pct: 0.15
-  trailing_stop_trail_pct: 0.08
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM04:
-  name: "Intraday Range Fade"
-  blocked_sessions: [PREMARKET, OPENING_HOUR, MIDDAY, POWER_HOUR, CLOSING]  # disabled: superseded by SIM12/SIM13
+  name: Intraday Range Fade
+  blocked_sessions:
+  - PREMARKET
+  - OPENING_HOUR
+  - MIDDAY
+  - POWER_HOUR
+  - CLOSING
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "MEAN_REVERSION"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: MEAN_REVERSION
   features_enabled: false
   dte_min: 0
   dte_max: 1
   otm_pct: 0.005
   hold_min_seconds: 300
   hold_max_seconds: 2700
-  cutoff_time_et: "15:00"
+  cutoff_time_et: '15:00'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.30
-  profit_target_pct: 0.55
-  trailing_stop_activate_pct: 0.15
-  trailing_stop_trail_pct: 0.08
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM05:
-  name: "1DTE Afternoon Continuation"
-  blocked_sessions: [PREMARKET, OPENING_HOUR, MIDDAY, POWER_HOUR, CLOSING]  # disabled: superseded by SIM11/SIM29
+  name: 1DTE Afternoon Continuation
+  blocked_sessions:
+  - PREMARKET
+  - OPENING_HOUR
+  - MIDDAY
+  - POWER_HOUR
+  - CLOSING
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "TREND_PULLBACK"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: TREND_PULLBACK
   features_enabled: false
   dte_min: 1
   dte_max: 1
   otm_pct: 0.003
   hold_min_seconds: 1800
   hold_max_seconds: 10800
-  cutoff_time_et: "15:30"
+  cutoff_time_et: '15:30'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.30
-  profit_target_pct: 0.55
-  trailing_stop_activate_pct: 0.15
-  trailing_stop_trail_pct: 0.08
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM06:
-  name: "7-10 DTE Short Swing"
+  name: 7-10 DTE Short Swing
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "swing"
-  signal_mode: "SWING_TREND"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: swing
+  signal_mode: SWING_TREND
   features_enabled: false
   dte_min: 7
   dte_max: 10
   otm_pct: 0.0
   hold_min_seconds: 3600
   hold_max_seconds: 259200
-  cutoff_time_et: "15:45"
+  cutoff_time_et: '15:45'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.2
+  risk_per_trade_pct: 0.03
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.20
+  exposure_cap_pct: 0.2
   max_spread_pct: 0.12
   entry_slippage: 0.008
   exit_slippage: 0.008
-  stop_loss_pct: 0.45
-  profit_target_pct: 0.90
-  trailing_stop_activate_pct: 0.12
+  stop_loss_pct: 0.2
+  profit_target_pct: 0.4
+  trailing_stop_activate_pct: 0.1
   trailing_stop_trail_pct: 0.06
   theta_burn_enabled: true
   theta_burn_dte_threshold: 2
-  theta_burn_stop_tighten_pct: 0.40
+  theta_burn_stop_tighten_pct: 0.4
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
   delta_erosion_exit_enabled: true
-  delta_erosion_entry_min: 0.40
-  delta_erosion_current_max: 0.20
-
+  delta_erosion_entry_min: 0.4
+  delta_erosion_current_max: 0.2
 SIM07:
-  name: "14-21 DTE Swing Trend"
+  name: 14-21 DTE Swing Trend
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "swing"
-  signal_mode: "SWING_TREND"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: swing
+  signal_mode: SWING_TREND
   features_enabled: false
   dte_min: 14
   dte_max: 21
   otm_pct: 0.0
   hold_min_seconds: 86400
   hold_max_seconds: 604800
-  cutoff_time_et: "15:45"
+  cutoff_time_et: '15:45'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.2
+  risk_per_trade_pct: 0.03
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.20
+  exposure_cap_pct: 0.2
   max_spread_pct: 0.12
   entry_slippage: 0.008
   exit_slippage: 0.008
-  stop_loss_pct: 0.55
-  profit_target_pct: 1.00
-  trailing_stop_activate_pct: 0.12
+  stop_loss_pct: 0.2
+  profit_target_pct: 0.4
+  trailing_stop_activate_pct: 0.1
   trailing_stop_trail_pct: 0.06
   theta_burn_enabled: true
   theta_burn_dte_threshold: 2
-  theta_burn_stop_tighten_pct: 0.40
+  theta_burn_stop_tighten_pct: 0.4
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
   delta_erosion_exit_enabled: true
-  delta_erosion_entry_min: 0.40
-  delta_erosion_current_max: 0.20
-
+  delta_erosion_entry_min: 0.4
+  delta_erosion_current_max: 0.2
 SIM08:
-  name: "Regime Filter Agent"
+  name: Regime Filter Agent
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "TREND_PULLBACK"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: TREND_PULLBACK
   features_enabled: false
   dte_min: 1
   dte_max: 1
   otm_pct: 0.003
   hold_min_seconds: 1800
   hold_max_seconds: 10800
-  cutoff_time_et: "15:00"
+  cutoff_time_et: '15:00'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 1
-  exposure_cap_pct: 0.10
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.12
   entry_slippage: 0.008
   exit_slippage: 0.008
-  regime_filter: ["TREND", "VOLATILE"]
-  stop_loss_pct: 0.30
-  profit_target_pct: 0.55
-  trailing_stop_activate_pct: 0.15
-  trailing_stop_trail_pct: 0.08
+  regime_filter:
+  - TREND
+  - VOLATILE
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM09:
-  name: "Opportunity Follower"
+  name: Opportunity Follower
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "adaptive"
-  signal_mode: "OPPORTUNITY"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: adaptive
+  signal_mode: OPPORTUNITY
   features_enabled: false
   dte_min: 0
   dte_max: 7
   otm_pct: 0.005
   hold_min_seconds: 300
   hold_max_seconds: 86400
-  cutoff_time_et: "15:30"
+  cutoff_time_et: '15:30'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 1
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.40
-  profit_target_pct: 0.60
-  trailing_stop_activate_pct: 0.12
-  trailing_stop_trail_pct: 0.06
+  stop_loss_pct: 0.12
+  profit_target_pct: 0.25
+  trailing_stop_activate_pct: 0.08
+  trailing_stop_trail_pct: 0.04
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM10:
-  name: "ORB Breakout"
+  name: ORB Breakout
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "scalp"
-  signal_mode: "ORB_BREAKOUT"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: scalp
+  signal_mode: ORB_BREAKOUT
   features_enabled: true
   orb_minutes: 30
   vol_z_min: 1.0
@@ -469,41 +467,40 @@ SIM10:
   otm_pct: 0.01
   hold_min_seconds: 60
   hold_max_seconds: 900
-  cutoff_time_et: "11:00"
+  cutoff_time_et: '11:00'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 1
-  exposure_cap_pct: 0.10
+  exposure_cap_pct: 0.2
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.25
-  profit_target_pct: 0.35
-  trailing_stop_activate_pct: null
-  trailing_stop_trail_pct: null
+  stop_loss_pct: 0.08
+  profit_target_pct: 0.15
+  trailing_stop_activate_pct: 0.05
+  trailing_stop_trail_pct: 0.03
   zscore_window: 30
   iv_series_window: 200
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
-
+  theta_burn_stop_tighten_pct: 0.5
 SIM11:
-  name: "Vol Expansion Trend"
+  name: Vol Expansion Trend
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "TREND_PULLBACK"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: TREND_PULLBACK
   features_enabled: true
   atr_expansion_min: 1.2
   dte_min: 1
@@ -511,85 +508,83 @@ SIM11:
   otm_pct: 0.01
   hold_min_seconds: 300
   hold_max_seconds: 7200
-  cutoff_time_et: "15:30"
+  cutoff_time_et: '15:30'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.18
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.35
-  profit_target_pct: 0.60
-  trailing_stop_activate_pct: 0.12
-  trailing_stop_trail_pct: 0.06
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   zscore_window: 30
   iv_series_window: 200
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM12:
-  name: "Range-Only Mean Reversion"
+  name: Range-Only Mean Reversion
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "MEAN_REVERSION"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: MEAN_REVERSION
   features_enabled: false
-  regime_filter: "RANGE_ONLY"
+  regime_filter: RANGE_ONLY
   dte_min: 0
   dte_max: 1
   otm_pct: 0.005
   hold_min_seconds: 300
   hold_max_seconds: 3600
-  cutoff_time_et: "15:00"
+  cutoff_time_et: '15:00'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.25
-  profit_target_pct: 0.45
-  trailing_stop_activate_pct: 0.12
-  trailing_stop_trail_pct: 0.06
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM13:
-  name: "Dual Momentum Surge"
+  name: Dual Momentum Surge
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "TREND_PULLBACK"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: TREND_PULLBACK
   features_enabled: true
   atr_expansion_min: 1.3
   vol_z_min: 1.0
@@ -598,688 +593,676 @@ SIM13:
   otm_pct: 0.008
   hold_min_seconds: 300
   hold_max_seconds: 5400
-  cutoff_time_et: "15:00"
+  cutoff_time_et: '15:00'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 1
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.30
-  profit_target_pct: 0.65
-  trailing_stop_activate_pct: 0.15
-  trailing_stop_trail_pct: 0.08
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   zscore_window: 30
   iv_series_window: 200
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM14:
-  name: "Low IV Trend Entry"
+  name: Low IV Trend Entry
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "TREND_PULLBACK"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: TREND_PULLBACK
   features_enabled: true
-  iv_rank_max: 0.30
+  iv_rank_max: 0.3
   dte_min: 1
   dte_max: 3
   otm_pct: 0.005
   hold_min_seconds: 600
   hold_max_seconds: 10800
-  cutoff_time_et: "15:30"
+  cutoff_time_et: '15:30'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.35
-  profit_target_pct: 0.70
-  trailing_stop_activate_pct: 0.15
-  trailing_stop_trail_pct: 0.08
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   zscore_window: 30
   iv_series_window: 200
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM15:
-  name: "VWAP Extreme Reversion"
+  name: VWAP Extreme Reversion
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "VWAP_REVERSION"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: VWAP_REVERSION
   features_enabled: true
   vwap_z_min: 2.0
-  entry_start_time_et: "10:00"
+  entry_start_time_et: '10:00'
   dte_min: 0
   dte_max: 1
   otm_pct: 0.005
   hold_min_seconds: 120
   hold_max_seconds: 2700
-  cutoff_time_et: "15:30"
+  cutoff_time_et: '15:30'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.25
-  profit_target_pct: 0.40
-  trailing_stop_activate_pct: 0.10
-  trailing_stop_trail_pct: 0.05
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   zscore_window: 30
   iv_series_window: 200
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM16:
-  name: "Morning Momentum Breakout"
+  name: Morning Momentum Breakout
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "scalp"
-  signal_mode: "BREAKOUT"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: scalp
+  signal_mode: BREAKOUT
   features_enabled: true
   vol_z_min: 0.5
-  entry_start_time_et: "09:30"
+  entry_start_time_et: 09:30
   dte_min: 0
   dte_max: 0
   otm_pct: 0.008
   hold_min_seconds: 60
   hold_max_seconds: 1800
-  cutoff_time_et: "10:30"
+  cutoff_time_et: '10:30'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 1
-  exposure_cap_pct: 0.10
+  exposure_cap_pct: 0.2
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.25
-  profit_target_pct: 0.40
-  trailing_stop_activate_pct: 0.12
-  trailing_stop_trail_pct: 0.06
+  stop_loss_pct: 0.08
+  profit_target_pct: 0.15
+  trailing_stop_activate_pct: 0.05
+  trailing_stop_trail_pct: 0.03
   zscore_window: 30
   iv_series_window: 200
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
-
+  theta_burn_stop_tighten_pct: 0.5
 SIM17:
-  name: "Z-Score Bounce"
+  name: Z-Score Bounce
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "ZSCORE_BOUNCE"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: ZSCORE_BOUNCE
   features_enabled: true
   close_z_min: 2.0
-  regime_filter: "RANGE_ONLY"
-  entry_start_time_et: "10:00"
+  regime_filter: RANGE_ONLY
+  entry_start_time_et: '10:00'
   dte_min: 0
   dte_max: 1
   otm_pct: 0.005
   hold_min_seconds: 120
   hold_max_seconds: 3600
-  cutoff_time_et: "15:00"
+  cutoff_time_et: '15:00'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.20
-  profit_target_pct: 0.35
-  trailing_stop_activate_pct: 0.10
-  trailing_stop_trail_pct: 0.05
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   zscore_window: 30
   iv_series_window: 200
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM18:
-  name: "Failed Breakout Reversal"
+  name: Failed Breakout Reversal
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "FAILED_BREAKOUT_REVERSAL"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: FAILED_BREAKOUT_REVERSAL
   features_enabled: false
-  blocked_sessions: ["MIDDAY"]
+  blocked_sessions:
+  - MIDDAY
   cooldown_after_stop_seconds: 600
   dte_min: 0
   dte_max: 1
   otm_pct: 0.005
   hold_min_seconds: 300
   hold_max_seconds: 5400
-  cutoff_time_et: "15:00"
+  cutoff_time_et: '15:00'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.30
-  profit_target_pct: 0.55
-  trailing_stop_activate_pct: 0.12
-  trailing_stop_trail_pct: 0.06
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM19:
-  name: "VWAP Continuation"
+  name: VWAP Continuation
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "VWAP_CONTINUATION"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: VWAP_CONTINUATION
   features_enabled: false
   max_vwap_dist_pct: 0.005
-  entry_start_time_et: "10:00"
+  entry_start_time_et: '10:00'
   min_seconds_between_entries: 300
   dte_min: 0
   dte_max: 1
   otm_pct: 0.005
   hold_min_seconds: 300
   hold_max_seconds: 5400
-  cutoff_time_et: "15:00"
+  cutoff_time_et: '15:00'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.30
-  profit_target_pct: 0.55
-  trailing_stop_activate_pct: 0.12
-  trailing_stop_trail_pct: 0.06
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM20:
-  name: "Opening Drive"
+  name: Opening Drive
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "scalp"
-  signal_mode: "OPENING_DRIVE"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: scalp
+  signal_mode: OPENING_DRIVE
   features_enabled: false
   open_move_min_pct: 0.003
-  entry_start_time_et: "09:30"
+  entry_start_time_et: 09:30
   dte_min: 0
   dte_max: 0
   otm_pct: 0.008
   hold_min_seconds: 120
   hold_max_seconds: 2700
-  cutoff_time_et: "10:30"
+  cutoff_time_et: '10:30'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 1
-  exposure_cap_pct: 0.10
+  exposure_cap_pct: 0.2
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.25
-  profit_target_pct: 0.40
-  trailing_stop_activate_pct: 0.10
-  trailing_stop_trail_pct: 0.05
+  # OPTIMIZED 2026-03-11: SL 0.08->0.06 TP 0.15->0.30 Trail 0.04/0.02->0.08/0.02 [train 35% val 34% test 39% WR E$=0.21]
+  stop_loss_pct: 0.06
+  profit_target_pct: 0.3
+  trailing_stop_activate_pct: 0.08
+  trailing_stop_trail_pct: 0.02
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
-
+  theta_burn_stop_tighten_pct: 0.5
 SIM21:
-  name: "Afternoon Breakout"
+  name: Afternoon Breakout
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "AFTERNOON_BREAKOUT"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: AFTERNOON_BREAKOUT
   features_enabled: false
   expansion_ratio_min: 1.5
-  entry_start_time_et: "13:00"
+  entry_start_time_et: '13:00'
   dte_min: 0
   dte_max: 1
   otm_pct: 0.008
   hold_min_seconds: 300
   hold_max_seconds: 5400
-  cutoff_time_et: "15:00"
+  cutoff_time_et: '15:00'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 1
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.30
-  profit_target_pct: 0.55
-  trailing_stop_activate_pct: 0.12
-  trailing_stop_trail_pct: 0.06
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM22:
-  name: "Trend Reclaim"
+  name: Trend Reclaim
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "TREND_RECLAIM"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: TREND_RECLAIM
   features_enabled: false
   ema_spread_min: 0.0005
-  blocked_sessions: ["MIDDAY"]
+  blocked_sessions:
+  - MIDDAY
   cooldown_after_stop_seconds: 600
-  entry_start_time_et: "10:00"
+  entry_start_time_et: '10:00'
   dte_min: 0
   dte_max: 1
   otm_pct: 0.005
   hold_min_seconds: 300
   hold_max_seconds: 5400
-  cutoff_time_et: "15:30"
+  cutoff_time_et: '15:30'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.30
-  profit_target_pct: 0.55
-  trailing_stop_activate_pct: 0.12
-  trailing_stop_trail_pct: 0.06
+  # OPTIMIZED 2026-03-11: SL 0.10->0.08 TP 0.20->0.40 Trail 0.06/0.04->0.10/0.03 [train 38% val 27% test 36% WR E$=2.97]
+  stop_loss_pct: 0.08
+  profit_target_pct: 0.4
+  trailing_stop_activate_pct: 0.1
+  trailing_stop_trail_pct: 0.03
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM23:
-  name: "Extreme Extension Fade"
+  name: Extreme Extension Fade
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "EXTREME_EXTENSION_FADE"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: EXTREME_EXTENSION_FADE
   features_enabled: true
   vwap_z_threshold: 2.5
   rsi_bear_threshold: 76.0
   rsi_bull_threshold: 24.0
-  entry_start_time_et: "10:00"
+  entry_start_time_et: '10:00'
   dte_min: 0
   dte_max: 1
   otm_pct: 0.005
   hold_min_seconds: 120
   hold_max_seconds: 3600
-  cutoff_time_et: "15:00"
+  cutoff_time_et: '15:00'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.25
-  profit_target_pct: 0.45
-  trailing_stop_activate_pct: 0.10
-  trailing_stop_trail_pct: 0.05
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   zscore_window: 30
   iv_series_window: 200
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM24:
-  name: "4H FVG Swing"
+  name: 4H FVG Swing
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "FVG_4H"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: FVG_4H
   features_enabled: false
   dte_min: 1
   dte_max: 3
   otm_pct: 0.005
   hold_min_seconds: 1800
   hold_max_seconds: 14400
-  cutoff_time_et: "15:30"
+  cutoff_time_et: '15:30'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.35
-  profit_target_pct: 0.65
-  trailing_stop_activate_pct: 0.12
-  trailing_stop_trail_pct: 0.06
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM25:
-  name: "5M FVG Scalp"
+  name: 5M FVG Scalp
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "scalp"
-  signal_mode: "FVG_5M"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: scalp
+  signal_mode: FVG_5M
   features_enabled: false
   dte_min: 0
   dte_max: 0
   otm_pct: 0.005
   hold_min_seconds: 60
   hold_max_seconds: 900
-  cutoff_time_et: "15:45"
+  cutoff_time_et: '15:45'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 3
-  exposure_cap_pct: 0.10
+  exposure_cap_pct: 0.2
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.25
-  profit_target_pct: 0.40
-  trailing_stop_activate_pct: null
-  trailing_stop_trail_pct: null
+  stop_loss_pct: 0.08
+  profit_target_pct: 0.15
+  trailing_stop_activate_pct: 0.05
+  trailing_stop_trail_pct: 0.03
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
-
+  theta_burn_stop_tighten_pct: 0.5
 SIM26:
-  name: "Liquidity Sweep"
+  name: Liquidity Sweep
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "LIQUIDITY_SWEEP"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: LIQUIDITY_SWEEP
   features_enabled: false
   dte_min: 0
   dte_max: 1
   otm_pct: 0.005
   hold_min_seconds: 300
   hold_max_seconds: 2700
-  cutoff_time_et: "15:30"
+  cutoff_time_et: '15:30'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.30
-  profit_target_pct: 0.55
-  trailing_stop_activate_pct: 0.15
-  trailing_stop_trail_pct: 0.08
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM27:
-  name: "FVG+Sweep Combo"
+  name: FVG+Sweep Combo
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "FVG_SWEEP_COMBO"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: FVG_SWEEP_COMBO
   features_enabled: false
   dte_min: 0
   dte_max: 1
   otm_pct: 0.005
   hold_min_seconds: 300
   hold_max_seconds: 3600
-  cutoff_time_et: "15:30"
+  cutoff_time_et: '15:30'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.30
-  profit_target_pct: 0.60
-  trailing_stop_activate_pct: 0.12
-  trailing_stop_trail_pct: 0.06
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM28:
-  name: "Flow Divergence"
+  name: Flow Divergence
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "FLOW_DIVERGENCE"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: FLOW_DIVERGENCE
   features_enabled: false
   dte_min: 1
   dte_max: 2
   otm_pct: 0.008
   hold_min_seconds: 900
   hold_max_seconds: 7200
-  cutoff_time_et: "15:00"
+  cutoff_time_et: '15:00'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.35
-  profit_target_pct: 0.70
-  trailing_stop_activate_pct: 0.12
-  trailing_stop_trail_pct: 0.06
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM29:
-  name: "Trend Pullback (POWER Hour)"
+  name: Trend Pullback (POWER Hour)
   session_filter: POWER_HOUR
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "TREND_PULLBACK"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: TREND_PULLBACK
   features_enabled: true
   atr_expansion_min: 1.2
   dte_min: 1
@@ -1287,313 +1270,270 @@ SIM29:
   otm_pct: 0.01
   hold_min_seconds: 300
   hold_max_seconds: 7200
-  cutoff_time_et: "15:30"
+  cutoff_time_et: '15:30'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.18
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.35
-  profit_target_pct: 0.60
-  trailing_stop_activate_pct: 0.12
-  trailing_stop_trail_pct: 0.06
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   zscore_window: 30
   iv_series_window: 200
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM30:
-  name: "Multi-TF EMA Confirm"
+  name: Multi-TF EMA Confirm
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "MULTI_TF_CONFIRM"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: MULTI_TF_CONFIRM
   features_enabled: false
   dte_min: 1
   dte_max: 3
   otm_pct: 0.008
   hold_min_seconds: 300
   hold_max_seconds: 5400
-  cutoff_time_et: "15:30"
+  cutoff_time_et: '15:30'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.18
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.35
-  profit_target_pct: 0.60
-  trailing_stop_activate_pct: 0.12
-  trailing_stop_trail_pct: 0.06
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM31:
-  name: "VPOC Reversion"
+  name: VPOC Reversion
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "VPOC_REVERSION"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: VPOC_REVERSION
   features_enabled: true
   dte_min: 0
   dte_max: 1
   otm_pct: 0.005
   hold_min_seconds: 300
   hold_max_seconds: 3600
-  cutoff_time_et: "15:00"
+  cutoff_time_et: '15:00'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.30
-  profit_target_pct: 0.55
-  trailing_stop_activate_pct: 0.12
-  trailing_stop_trail_pct: 0.06
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   zscore_window: 30
   iv_series_window: 200
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM32:
-  name: "Gap Fade"
+  name: Gap Fade
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "scalp"
-  signal_mode: "GAP_FADE"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: scalp
+  signal_mode: GAP_FADE
   features_enabled: false
   dte_min: 0
   dte_max: 0
   otm_pct: 0.006
   hold_min_seconds: 120
   hold_max_seconds: 2700
-  cutoff_time_et: "10:30"
+  cutoff_time_et: '10:30'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 1
-  exposure_cap_pct: 0.10
+  exposure_cap_pct: 0.2
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.25
-  profit_target_pct: 0.45
-  trailing_stop_activate_pct: 0.10
-  trailing_stop_trail_pct: 0.05
+  stop_loss_pct: 0.08
+  profit_target_pct: 0.15
+  trailing_stop_activate_pct: 0.05
+  trailing_stop_trail_pct: 0.03
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
-
+  theta_burn_stop_tighten_pct: 0.5
 SIM33:
-  name: "Opening Range Reclaim"
+  name: Opening Range Reclaim
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "OPENING_RANGE_RECLAIM"
-  execution_mode: "paper"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: OPENING_RANGE_RECLAIM
+  execution_mode: paper
   features_enabled: false
   dte_min: 0
   dte_max: 1
   otm_pct: 0.008
   hold_min_seconds: 300
   hold_max_seconds: 14400
-  cutoff_time_et: "15:00"
+  cutoff_time_et: '15:00'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.30
-  profit_target_pct: 0.55
+  # OPTIMIZED 2026-03-11: SL 0.10->0.15 TP 0.20->0.60 Trail 0.06/0.04->0.12/0.04 [train 32% val 25% test 37% WR E$=1.25]
+  stop_loss_pct: 0.15
+  profit_target_pct: 0.6
   trailing_stop_activate_pct: 0.12
-  trailing_stop_trail_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM34:
-  name: "Vol Compression Breakout"
+  name: Vol Compression Breakout
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "VOL_COMPRESSION_BREAKOUT"
-  execution_mode: "paper"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: VOL_COMPRESSION_BREAKOUT
+  execution_mode: paper
   features_enabled: false
   dte_min: 0
   dte_max: 1
   otm_pct: 0.008
   hold_min_seconds: 300
   hold_max_seconds: 21600
-  cutoff_time_et: "15:30"
+  cutoff_time_et: '15:30'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.25
-  profit_target_pct: 0.50
-  trailing_stop_activate_pct: 0.12
-  trailing_stop_trail_pct: 0.06
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
 SIM35:
-  name: "Vol Spike Fade"
+  name: Vol Spike Fade
   symbols:
-    - SPY
-    - QQQ
-    - IWM
-    - VXX
-    - TSLA
-    - AAPL
-    - NVDA
-    - MSFT
-  horizon: "intraday"
-  signal_mode: "VOL_SPIKE_FADE"
-  execution_mode: "paper"
+  - SPY
+  - QQQ
+  - IWM
+  - VXX
+  - TSLA
+  - AAPL
+  - NVDA
+  - MSFT
+  horizon: intraday
+  signal_mode: VOL_SPIKE_FADE
+  execution_mode: paper
   features_enabled: false
   dte_min: 0
   dte_max: 0
   otm_pct: 0.006
   hold_min_seconds: 120
   hold_max_seconds: 7200
-  cutoff_time_et: "15:00"
+  cutoff_time_et: '15:00'
   balance_start: 500
   small_account_mode: true
   death_threshold: 25
-  max_position_pct: 0.15
-  risk_per_trade_pct: 0.02
-  daily_loss_limit_pct: 0.06
+  max_position_pct: 0.25
+  risk_per_trade_pct: 0.04
+  daily_loss_limit_pct: 0.08
   max_open_trades: 2
-  exposure_cap_pct: 0.15
+  exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.25
-  profit_target_pct: 0.45
-  trailing_stop_activate_pct: 0.10
-  trailing_stop_trail_pct: 0.05
+  stop_loss_pct: 0.1
+  profit_target_pct: 0.2
+  trailing_stop_activate_pct: 0.06
+  trailing_stop_trail_pct: 0.04
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
-  theta_burn_stop_tighten_pct: 0.50
+  theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
-
-# ── Symbol Registry ────────────────────────────────────────────────────────
-# Each entry names the per-symbol 1-minute candle CSV and asset type.
-# Adding a new symbol here is the ONLY code change required — everything else
-# (chart gen, GPT prompts, dashboard filters, !ask) reads from this registry.
-symbols:
-  SPY:
-    type: etf
-    options: true
-    data_file: data/spy_1m.csv
-  QQQ:
-    type: etf
-    options: true
-    data_file: data/qqq_1m.csv
-  IWM:
-    type: etf
-    options: true
-    data_file: data/iwm_1m.csv
-  VXX:
-    type: etn
-    options: true
-    data_file: data/vxx_1m.csv
-  TSLA:
-    type: stock
-    options: true
-    data_file: data/tsla_1m.csv
-  AAPL:
-    type: stock
-    options: true
-    data_file: data/aapl_1m.csv
-  NVDA:
-    type: stock
-    options: true
-    data_file: data/nvda_1m.csv
-  MSFT:
-    type: stock
-    options: true
-    data_file: data/msft_1m.csv

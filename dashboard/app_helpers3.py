@@ -28,33 +28,8 @@ async def _handle_get_chart(symbol: str, bars: int) -> dict:
     """Body of GET /api/chart — returns candle dict."""
     sym = symbol.upper()
     try:
-        from core.data_service import get_market_dataframe, _fetch_from_alpaca, _prepare_dataframe, _load_symbol_registry
-        if sym == "SPY":
-            df = await asyncio.to_thread(get_market_dataframe)
-        else:
-            df = None
-            registry = _load_symbol_registry()
-            csv_path = registry.get(sym, {}).get("data_file")
-            if csv_path:
-                _abs = os.path.join(BASE_DIR, csv_path)
-                if os.path.exists(_abs):
-                    try:
-                        df = pd.read_csv(_abs, parse_dates=[0])
-                    except Exception:
-                        df = None
-            raw = await asyncio.to_thread(_fetch_from_alpaca, sym)
-            fresh = _prepare_dataframe(raw) if raw is not None and not raw.empty else None
-            if fresh is not None and not fresh.empty:
-                if df is not None and not df.empty:
-                    fresh_reset = fresh.reset_index()
-                    df_all = pd.concat([df, fresh_reset], ignore_index=True)
-                    _tc = next((c for c in df_all.columns if "time" in c.lower() or "date" in c.lower()), None)
-                    if _tc:
-                        df_all[_tc] = pd.to_datetime(df_all[_tc], errors="coerce")
-                        df_all = df_all.drop_duplicates(subset=[_tc], keep="last").sort_values(_tc)
-                    df = df_all
-                else:
-                    df = fresh
+        from core.data_service import get_symbol_dataframe
+        df = await asyncio.to_thread(get_symbol_dataframe, sym)
 
         if df is None or df.empty:
             return {"candles": [], "symbol": sym, "error": f"no_data_{sym}"}
@@ -89,8 +64,9 @@ async def _handle_get_chart(symbol: str, bars: int) -> dict:
             df_last = df[(df[ts_col] >= _last_start) & (df[ts_col] < _last_end)]
             if len(df_last) >= 10:
                 df = df_last
-
-        df = df.tail(max(bars, 1))
+            else:
+                # Neither today nor last date had enough data — use tail as fallback
+                df = df.tail(max(bars, 1))
         candles = []
         for _, row in df.iterrows():
             candles.append({

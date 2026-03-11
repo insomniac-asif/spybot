@@ -227,11 +227,19 @@ def _evaluate_exit_conditions(trade, profile, sim, current_price, elapsed_second
     # ── Configurable Greeks exits (opt-in per-sim via profile keys) ─────────
     # Run AFTER standard exits — a profitable trade will never be ejected here.
 
+    # Helper: resolve threshold with adaptive overrides
+    def _eff(key, default):
+        try:
+            from analytics.adaptive_tuning import get_effective_threshold
+            return get_effective_threshold(trade.get("sim_id", ""), profile, key, default)
+        except Exception:
+            return float(profile.get(key, default))
+
     # 1. Enhanced theta burn: tighten or force exit on near-expiry losing trades
     if not should_exit and profile.get("theta_burn_enabled", False):
         try:
             dte_threshold = int(profile.get("theta_burn_dte_threshold", 1))
-            tighten_pct   = float(profile.get("theta_burn_stop_tighten_pct", 0.50))
+            tighten_pct   = _eff("theta_burn_stop_tighten_pct", 0.50)
             expiry_raw    = trade.get("expiry")
             if isinstance(expiry_raw, str):
                 expiry_date = datetime.fromisoformat(expiry_raw).date()
@@ -270,7 +278,7 @@ def _evaluate_exit_conditions(trade, profile, sim, current_price, elapsed_second
                 and gain_pct < -0.15):
             try:
                 vega_entry        = float(vega_at_entry)
-                vega_mult         = float(profile.get("iv_crush_vega_multiplier", 2.0))
+                vega_mult         = _eff("iv_crush_vega_multiplier", 2.0)
                 entry_price_val   = float(trade.get("entry_price", 0))
                 if entry_price_val > 0:
                     option_drop       = abs(gain_pct) * entry_price_val
@@ -298,7 +306,7 @@ def _evaluate_exit_conditions(trade, profile, sim, current_price, elapsed_second
             try:
                 entry_delta = abs(float(delta_at_entry))
                 entry_min   = float(profile.get("delta_erosion_entry_min", 0.40))
-                current_max = float(profile.get("delta_erosion_current_max", 0.20))
+                current_max = _eff("delta_erosion_current_max", 0.20)
                 if entry_delta >= entry_min:
                     price_ratio = max(0.0, 1.0 + gain_pct)
                     est_delta   = entry_delta * price_ratio

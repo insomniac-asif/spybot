@@ -2806,3 +2806,96 @@ html, body {
 .desk-wr.wr-bad   { color: #aa2222; }
 .sim-pnl-tag.profit  { color: #2a7a2a; }
 .sim-pnl-tag.loss    { color: #aa2222; }
+
+/* ════════════════════════════════════════ GREEKS ANALYTICS TAB */
+.greeks-cards-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.greeks-card {
+  background: #f8f4ec;
+  border: 1px solid #d4c4a0;
+  border-radius: 8px;
+  padding: 14px 16px;
+  text-align: center;
+}
+.greeks-card-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+.greeks-card-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text);
+}
+.greeks-card-sub {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.greeks-section {
+  margin-bottom: 16px;
+}
+.greeks-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text);
+  margin-bottom: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #d4c4a0;
+}
+.greeks-heatmap-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.greeks-heatmap-table th {
+  background: #d4c4a0;
+  color: var(--text);
+  padding: 6px 10px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.greeks-heatmap-table td {
+  padding: 5px 10px;
+  text-align: center;
+  border-bottom: 1px solid #e8e0d0;
+}
+.greeks-heatmap-table tr:hover { background: rgba(0,0,0,0.03); }
+.greeks-heatmap-table .hm-high { background: rgba(46,204,113,0.15); }
+.greeks-heatmap-table .hm-mid  { background: rgba(241,196,15,0.15); }
+.greeks-heatmap-table .hm-low  { background: rgba(231,76,60,0.15); }
+.greeks-heatmap-table .hm-none { color: #bbb; }
+
+.greeks-tuning-entry {
+  padding: 6px 10px;
+  border-bottom: 1px solid #e8e0d0;
+  font-size: 12px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.greeks-tuning-entry .gte-time { color: var(--text-muted); min-width: 120px; font-size: 11px; }
+.greeks-tuning-entry .gte-sim  { font-weight: 600; min-width: 50px; }
+.greeks-tuning-entry .gte-detail { flex: 1; }
+.greeks-tuning-entry .gte-reason { color: var(--text-muted); font-size: 11px; }
+
+.greeks-empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+@media (max-width: 640px) {
+  .greeks-cards-row { grid-template-columns: 1fr; }
+}

@@ -549,6 +549,251 @@ async def get_patterns(sim_id: str):
 
 
 # ---------------------------------------------------------------------------
+# Greeks Analytics endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/api/greeks/overview")
+async def greeks_overview():
+    """Aggregate Greeks exit stats across all sims."""
+    try:
+        cfg = _load_config()
+        profiles = {k: v for k, v in cfg.items() if str(k).upper().startswith("SIM") and isinstance(v, dict)}
+    except Exception:
+        profiles = {}
+
+    by_trigger = {
+        "theta_burn": {"count": 0, "pnl_sum": 0, "saved": 0},
+        "iv_crush": {"count": 0, "pnl_sum": 0, "saved": 0},
+        "delta_erosion": {"count": 0, "pnl_sum": 0, "saved": 0},
+    }
+    total_trades = 0
+    daily_trend = {}  # date_str -> {theta, iv, delta}
+
+    theta_reasons = {"theta_burn", "theta_burn_0dte", "theta_burn_tightened"}
+    iv_reasons = {"iv_crush_stop", "iv_crush_exit"}
+    delta_reasons = {"delta_erosion"}
+    all_greeks = theta_reasons | iv_reasons | delta_reasons
+
+    for sim_id, profile in profiles.items():
+        try:
+            from simulation.sim_portfolio import SimPortfolio
+            sim = SimPortfolio(sim_id, profile)
+            sim.load()
+            trade_log = sim.trade_log if isinstance(sim.trade_log, list) else []
+            total_trades += len(trade_log)
+
+            for t in trade_log:
+                reason = t.get("exit_reason", "")
+                if reason not in all_greeks:
+                    continue
+
+                pnl = _safe_float(t.get("realized_pnl_dollars"), 0)
+                exit_time = t.get("exit_time", "")
+                day = str(exit_time)[:10]
+
+                if reason in theta_reasons:
+                    cat = "theta_burn"
+                elif reason in iv_reasons:
+                    cat = "iv_crush"
+                else:
+                    cat = "delta_erosion"
+
+                by_trigger[cat]["count"] += 1
+                by_trigger[cat]["pnl_sum"] += pnl
+                if pnl <= 0:
+                    by_trigger[cat]["saved"] += 1
+
+                if day and len(day) == 10:
+                    if day not in daily_trend:
+                        daily_trend[day] = {"date": day, "theta": 0, "iv": 0, "delta": 0}
+                    if cat == "theta_burn":
+                        daily_trend[day]["theta"] += 1
+                    elif cat == "iv_crush":
+                        daily_trend[day]["iv"] += 1
+                    else:
+                        daily_trend[day]["delta"] += 1
+        except Exception:
+            continue
+
+    total_greeks = sum(v["count"] for v in by_trigger.values())
+    result_triggers = {}
+    for trig, data in by_trigger.items():
+        c = data["count"]
+        result_triggers[trig] = {
+            "count": c,
+            "avg_pnl": round(data["pnl_sum"] / c, 2) if c > 0 else 0,
+            "saved_pct": round(data["saved"] / c * 100, 1) if c > 0 else 0,
+        }
+
+    return {
+        "total_greeks_exits": total_greeks,
+        "total_trades": total_trades,
+        "by_trigger": result_triggers,
+        "greeks_exits_vs_total": f"{total_greeks}/{total_trades} ({total_greeks/total_trades*100:.1f}%)" if total_trades > 0 else "0/0",
+        "daily_trend": sorted(daily_trend.values(), key=lambda x: x["date"])[-14:],
+    }
+
+
+@app.get("/api/greeks/sim/{sim_id}")
+async def greeks_sim(sim_id: str):
+    """Per-sim Greeks detail."""
+    sim_id = sim_id.upper()
+    try:
+        cfg = _load_config()
+        profile = cfg.get(sim_id, {})
+    except Exception:
+        profile = {}
+
+    try:
+        from analytics.adaptive_tuning import (
+            evaluate_greeks_effectiveness, get_effective_threshold,
+            _load_overrides, _load_tuning_log,
+        )
+        effectiveness = evaluate_greeks_effectiveness(sim_id, profile)
+    except Exception:
+        effectiveness = {}
+
+    triggers_enabled = []
+    thresholds = {}
+    for trig, cfg_key, default in [
+        ("theta_burn", "theta_burn_stop_tighten_pct", 0.50),
+        ("iv_crush", "iv_crush_vega_multiplier", 2.0),
+        ("delta_erosion", "delta_erosion_current_max", 0.20),
+    ]:
+        enabled_key = {"theta_burn": "theta_burn_enabled", "iv_crush": "iv_crush_exit_enabled", "delta_erosion": "delta_erosion_exit_enabled"}[trig]
+        if profile.get(enabled_key, False):
+            triggers_enabled.append(trig)
+        try:
+            thresholds[cfg_key] = get_effective_threshold(sim_id, profile, cfg_key, default)
+        except Exception:
+            thresholds[cfg_key] = float(profile.get(cfg_key, default))
+
+    # Get adaptive history from tuning log
+    adaptive_history = []
+    try:
+        log = _load_tuning_log()
+        adaptive_history = [e for e in log if e.get("sim_id") == sim_id][-20:]
+    except Exception:
+        pass
+
+    # Recent Greeks exits from trade log
+    recent_greeks = []
+    theta_reasons = {"theta_burn", "theta_burn_0dte", "theta_burn_tightened"}
+    iv_reasons = {"iv_crush_stop", "iv_crush_exit"}
+    delta_reasons = {"delta_erosion"}
+    all_greeks = theta_reasons | iv_reasons | delta_reasons
+
+    try:
+        from simulation.sim_portfolio import SimPortfolio
+        sim = SimPortfolio(sim_id, profile)
+        sim.load()
+        for t in reversed(sim.trade_log if isinstance(sim.trade_log, list) else []):
+            reason = t.get("exit_reason", "")
+            if reason in all_greeks:
+                cat = "theta_burn" if reason in theta_reasons else ("iv_crush" if reason in iv_reasons else "delta_erosion")
+                pnl = _safe_float(t.get("realized_pnl_dollars"), 0)
+                recent_greeks.append({
+                    "time": str(t.get("exit_time", ""))[:16],
+                    "trigger": cat,
+                    "exit_reason": reason,
+                    "pnl": round(pnl, 2),
+                    "saved": pnl <= 0,
+                })
+            if len(recent_greeks) >= 20:
+                break
+    except Exception:
+        pass
+
+    return {
+        "sim_id": sim_id,
+        "triggers_enabled": triggers_enabled,
+        "current_thresholds": thresholds,
+        "effectiveness": effectiveness,
+        "adaptive_history": adaptive_history,
+        "recent_greeks_exits": recent_greeks,
+    }
+
+
+@app.get("/api/greeks/tuning-log")
+async def greeks_tuning_log():
+    """Return full adaptive tuning log."""
+    try:
+        from analytics.adaptive_tuning import _load_tuning_log
+        return _load_tuning_log()
+    except Exception:
+        return []
+
+
+@app.get("/api/greeks/heatmap")
+async def greeks_heatmap():
+    """Per-sim heatmap data: trigger counts, save rates, composite score."""
+    try:
+        cfg = _load_config()
+        profiles = {k: v for k, v in cfg.items() if str(k).upper().startswith("SIM") and isinstance(v, dict)}
+    except Exception:
+        return []
+
+    theta_reasons = {"theta_burn", "theta_burn_0dte", "theta_burn_tightened"}
+    iv_reasons = {"iv_crush_stop", "iv_crush_exit"}
+    delta_reasons = {"delta_erosion"}
+    all_greeks = theta_reasons | iv_reasons | delta_reasons
+
+    rows = []
+    for sim_id, profile in sorted(profiles.items()):
+        if sim_id == "SIM00":
+            continue
+        try:
+            from simulation.sim_portfolio import SimPortfolio
+            sim = SimPortfolio(sim_id, profile)
+            sim.load()
+            trade_log = sim.trade_log if isinstance(sim.trade_log, list) else []
+
+            counts = {"theta_burn": 0, "iv_crush": 0, "delta_erosion": 0}
+            saved_counts = {"theta_burn": 0, "iv_crush": 0, "delta_erosion": 0}
+
+            for t in trade_log:
+                reason = t.get("exit_reason", "")
+                if reason in theta_reasons:
+                    cat = "theta_burn"
+                elif reason in iv_reasons:
+                    cat = "iv_crush"
+                elif reason in delta_reasons:
+                    cat = "delta_erosion"
+                else:
+                    continue
+                counts[cat] += 1
+                if _safe_float(t.get("realized_pnl_dollars"), 0) <= 0:
+                    saved_counts[cat] += 1
+
+            total_greeks = sum(counts.values())
+            total_saved = sum(saved_counts.values())
+
+            # Get composite score
+            score = None
+            try:
+                from analytics.composite_score import compute_composite_score
+                cs = compute_composite_score(sim_id, profile)
+                score = cs.get("composite_score")
+            except Exception:
+                pass
+
+            rows.append({
+                "sim_id": sim_id,
+                "theta_count": counts["theta_burn"],
+                "iv_count": counts["iv_crush"],
+                "delta_count": counts["delta_erosion"],
+                "total_greeks": total_greeks,
+                "saved_pct": round(total_saved / total_greeks * 100, 1) if total_greeks > 0 else 0,
+                "composite_score": score,
+                "total_trades": len(trade_log),
+            })
+        except Exception:
+            continue
+
+    return rows
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 

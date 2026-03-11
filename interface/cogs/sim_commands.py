@@ -426,6 +426,65 @@ class SimCommands(commands.Cog, name="Sims"):
             logging.exception("simanalyze_error")
             await _send_embed(ctx, "simanalyze failed due to an internal error.")
 
+    # ── simtuning ────────────────────────────────────────────────────────
+    @commands.command(name="simtuning")
+    async def simtuning(self, ctx, sim_id: str | None = None):
+        """Show adaptive tuning status for a sim. Usage: !simtuning <SIM_ID>"""
+        if not sim_id:
+            await _send_embed(ctx, "Usage: `!simtuning <SIM_ID>` e.g. `!simtuning SIM05`")
+            return
+        try:
+            from analytics.adaptive_tuning import get_tuning_status
+            import asyncio as _aio
+
+            sid = sim_id.upper()
+            status = await _aio.to_thread(get_tuning_status, sid)
+
+            lines = []
+            for trigger_name, info in status.get("triggers", {}).items():
+                if not info.get("enabled"):
+                    lines.append(f"{A(trigger_name.replace('_', ' ').title(), 'gray')}: {A('DISABLED', 'gray')}")
+                    continue
+
+                st = info.get("status", "UNCHANGED")
+                current = info.get("current_value")
+                original = info.get("original_value")
+                count = info.get("exit_count", 0)
+                saved = info.get("saved_pct", 0)
+
+                if st == "TIGHTENED":
+                    col = "green"
+                    detail = f"{original} -> {current}"
+                elif st == "LOOSENED":
+                    col = "yellow"
+                    detail = f"{original} -> {current}"
+                else:
+                    col = "white"
+                    detail = f"{current}" if current else "default"
+
+                count_text = f"-- {count} exits, saved {saved:.0f}%" if count >= 5 else f"-- only {count} exits, need more data"
+                lines.append(
+                    f"{A(trigger_name.replace('_', ' ').title(), 'cyan', bold=True)}: "
+                    f"{A(st, col)} ({detail}) {A(count_text, 'gray')}"
+                )
+
+            embed = discord.Embed(
+                title=f"Adaptive Tuning -- {sid}",
+                color=0x3498DB,
+            )
+            embed.add_field(
+                name="Trigger Status",
+                value=ab(*lines) if lines else ab(A("No triggers configured", "gray")),
+                inline=False,
+            )
+            last_date = status.get("last_tuning_date", "never")
+            enabled = status.get("adaptive_enabled", False)
+            embed.set_footer(text=f"Last tuning: {last_date} | Adaptive: {'ON' if enabled else 'OFF'}")
+            await ctx.send(embed=embed)
+        except Exception:
+            logging.exception("simtuning_error")
+            await _send_embed(ctx, "simtuning failed due to an internal error.")
+
     # ── lastskip ──────────────────────────────────────────────────────────
     @commands.command(name="lastskip")
     async def lastskip(self, ctx):

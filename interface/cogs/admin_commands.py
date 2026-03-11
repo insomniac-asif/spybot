@@ -430,6 +430,69 @@ Analyzes:
                 color=0xe74c3c,
             )
 
+    # ── journal ─────────────────────────────────────────────────────────────
+
+    @commands.command(name="journal")
+    async def journal(self, ctx, date_str: str | None = None):
+        """Daily trade journal. Usage: !journal [YYYY-MM-DD]"""
+        import io
+        from analytics.trade_journal import build_journal_summary, save_daily_journal
+
+        try:
+            path = await asyncio.to_thread(save_daily_journal, date_str)
+            summary = await asyncio.to_thread(build_journal_summary, date_str)
+
+            greeks_text = summary.get("greeks_exits", "0")
+            embed = discord.Embed(
+                title=f"Trade Journal -- {summary['date']}",
+                color=0x3498DB,
+            )
+            embed.description = (
+                f"**{summary['entries']}** entries | **{summary['exits']}** exits | "
+                f"**{summary['win_rate']:.1f}%** WR\n"
+                f"Net P&L: **${summary['net_pnl']:+.2f}**\n"
+                f"Best: {summary['best_trade']}\n"
+                f"Worst: {summary['worst_trade']}\n"
+                f"Greeks exits: {greeks_text}\n\n"
+                f"Full journal attached below"
+            )
+            _append_footer(embed)
+            await ctx.send(embed=embed)
+
+            # Attach the full markdown file
+            with open(path, "rb") as f:
+                file = discord.File(f, filename=os.path.basename(path))
+                await ctx.send(file=file)
+
+        except Exception as e:
+            logging.exception("journal_error: %s", e)
+            await _send_embed(ctx, f"Journal generation failed: {e}", color=0xFF3333)
+
+    # ── weekjournal ────────────────────────────────────────────────────────
+
+    @commands.command(name="weekjournal")
+    async def weekjournal(self, ctx):
+        """Weekly trade digest (last 5 trading days)."""
+        import io
+        from analytics.trade_journal import generate_weekly_digest
+
+        try:
+            digest = await asyncio.to_thread(generate_weekly_digest)
+            # Send as file since it's too long for embed
+            buf = io.BytesIO(digest.encode("utf-8"))
+            buf.seek(0)
+            file = discord.File(buf, filename="weekly_digest.md")
+            embed = discord.Embed(
+                title="Weekly Trade Digest",
+                description="Full digest attached below.",
+                color=0x3498DB,
+            )
+            _append_footer(embed)
+            await ctx.send(embed=embed, file=file)
+        except Exception as e:
+            logging.exception("weekjournal_error: %s", e)
+            await _send_embed(ctx, f"Weekly digest failed: {e}", color=0xFF3333)
+
     # ── retrain ───────────────────────────────────────────────────────────────
 
     @commands.command(name="retrain")

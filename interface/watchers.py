@@ -537,6 +537,86 @@ async def option_chain_health_loop(bot, channel_id: int):
         await asyncio.sleep(30)
 
 
+async def journal_auto_save_loop():
+    """
+    Auto-save daily trade journal at 16:20 ET each trading day.
+    """
+    last_run_date = None
+    eastern = pytz.timezone("America/New_York")
+    target_time = dtime(16, 20)
+    while True:
+        try:
+            now_et = datetime.now(eastern)
+            if now_et.weekday() > 4:
+                await asyncio.sleep(300)
+                continue
+            if now_et.time() < target_time:
+                await asyncio.sleep(30)
+                continue
+            if last_run_date == now_et.date():
+                await asyncio.sleep(300)
+                continue
+
+            last_run_date = now_et.date()
+            from analytics.trade_journal import save_daily_journal
+            path = await asyncio.to_thread(save_daily_journal)
+            logging.error("journal_auto_save: saved %s", path)
+        except Exception:
+            logging.exception("journal_auto_save_error")
+        await asyncio.sleep(30)
+
+
+async def adaptive_tuning_loop(bot=None, channel_id=None):
+    """
+    Run adaptive Greeks tuning at 16:25 ET each trading day.
+    Posts summary of changes to Discord if bot/channel provided.
+    """
+    last_run_date = None
+    eastern = pytz.timezone("America/New_York")
+    target_time = dtime(16, 25)
+    while True:
+        try:
+            now_et = datetime.now(eastern)
+            if now_et.weekday() > 4:
+                await asyncio.sleep(300)
+                continue
+            if now_et.time() < target_time:
+                await asyncio.sleep(30)
+                continue
+            if last_run_date == now_et.date():
+                await asyncio.sleep(300)
+                continue
+
+            last_run_date = now_et.date()
+            from analytics.adaptive_tuning import run_all_adaptive_tuning
+            all_changes = await asyncio.to_thread(run_all_adaptive_tuning)
+
+            if all_changes:
+                logging.error("adaptive_tuning: changes=%s", all_changes)
+                # Post to Discord
+                if bot and channel_id:
+                    channel = bot.get_channel(channel_id)
+                    if channel:
+                        lines = []
+                        for sim_id, changes in all_changes.items():
+                            for c in changes:
+                                lines.append(
+                                    f"**{sim_id}** {c['trigger']}: {c['old']} -> {c['new']} ({c['reason']})"
+                                )
+                        embed = discord.Embed(
+                            title="Adaptive Tuning Update",
+                            description="\n".join(lines[:20]),
+                            color=0x3498DB,
+                        )
+                        embed.set_footer(text=_format_et(now_et))
+                        await channel.send(embed=embed)
+            else:
+                logging.error("adaptive_tuning: no changes today")
+        except Exception:
+            logging.exception("adaptive_tuning_loop_error")
+        await asyncio.sleep(30)
+
+
 async def weight_reoptimizer_loop():
     """
     Post-market weight reoptimizer. Runs once per trading day at 16:15 ET.

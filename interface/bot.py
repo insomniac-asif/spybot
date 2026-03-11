@@ -10,6 +10,7 @@ from interface.watchers import (
     prediction_grader, opportunity_watcher, preopen_check_loop,
     eod_open_trade_report_loop, option_chain_health_loop, emergency_exit_loop,
     backfill_watcher, weight_reoptimizer_loop,
+    journal_auto_save_loop, adaptive_tuning_loop,
 )
 from simulation.sim_watcher import (
     sim_entry_loop, sim_exit_loop, sim_eod_report_loop, sim_daily_summary_loop,
@@ -159,6 +160,8 @@ class QQQBot(commands.Bot):
         T(S(emergency_exit_loop))
         T(S(backfill_watcher))
         T(S(weight_reoptimizer_loop))
+        T(S(journal_auto_save_loop))
+        T(S(adaptive_tuning_loop, self, EOD_REPORT_CHANNEL_ID))
 
     def _start_freshness_monitor(self):
         try:

@@ -32,6 +32,9 @@ data/candidates/
 data/strategy_performance.json
 data/*.pkl
 data/postmortems/
+data/journals/
+data/adaptive_overrides.json
+data/adaptive_tuning_log.json
 
 # ── Generated chart images ────────────────────────────────────────
 charts/*.png

@@ -242,25 +242,35 @@ function navTo(section, btn) {
     trades: '#section-trades',
     roster: '#section-roster',
     backtest: '#section-backtest',
+    greeks: '#section-greeks',
   };
-  // Show/hide sections: backtest section is managed as a hidden panel
-  const backtestPanel = document.getElementById('section-backtest');
-  if (section === 'backtest') {
-    if (backtestPanel) {
-      backtestPanel.classList.remove('hidden');
-    }
-    // Hide non-backtest sections
-    ['section-charts', 'section-trades', 'section-roster'].forEach(id => {
+  const hiddenPanels = ['section-backtest', 'section-greeks'];
+  const mainSections = ['section-charts', 'section-trades', 'section-roster'];
+
+  // Handle hidden panel tabs (backtest, greeks)
+  if (hiddenPanels.includes('section-' + section)) {
+    const panel = document.getElementById('section-' + section);
+    if (panel) panel.classList.remove('hidden');
+    // Hide everything else
+    hiddenPanels.filter(id => id !== 'section-' + section).forEach(id => {
+      const el2 = document.getElementById(id);
+      if (el2) el2.classList.add('hidden');
+    });
+    mainSections.forEach(id => {
       const el2 = document.getElementById(id);
       if (el2) el2.classList.add('hidden');
     });
     document.querySelectorAll('.subnav-tab').forEach(t => t.classList.remove('active'));
     if (btn) btn.classList.add('active');
-    renderBacktestTab();
+    if (section === 'backtest') renderBacktestTab();
+    if (section === 'greeks') fetchGreeksData();
     return;
   } else {
-    if (backtestPanel) backtestPanel.classList.add('hidden');
-    ['section-charts', 'section-trades', 'section-roster'].forEach(id => {
+    hiddenPanels.forEach(id => {
+      const el2 = document.getElementById(id);
+      if (el2) el2.classList.add('hidden');
+    });
+    mainSections.forEach(id => {
       const el2 = document.getElementById(id);
       if (el2) el2.classList.remove('hidden');
     });
@@ -3905,4 +3915,185 @@ function renderOptimizer(el, data) {
       </div>
     </div>
   `;
+}
+
+
+// ═══════════════════════════════════════════════ GREEKS ANALYTICS TAB
+let _greeksTrendChart = null;
+
+async function fetchGreeksData() {
+  const loading = document.getElementById('greeks-loading');
+  if (loading) loading.style.display = '';
+
+  try {
+    const [overview, heatmap, tuningLog] = await Promise.all([
+      fetch('/api/greeks/overview').then(r => r.json()),
+      fetch('/api/greeks/heatmap').then(r => r.json()),
+      fetch('/api/greeks/tuning-log').then(r => r.json()),
+    ]);
+
+    if (loading) loading.style.display = 'none';
+    renderGreeksOverview(overview);
+    renderGreeksTrend(overview.daily_trend || []);
+    renderGreeksHeatmap(heatmap || []);
+    renderGreeksTuningLog(tuningLog || []);
+  } catch (e) {
+    console.error('Greeks fetch error:', e);
+    if (loading) loading.textContent = 'Failed to load Greeks data.';
+  }
+}
+
+function renderGreeksOverview(data) {
+  const cards = document.getElementById('greeks-cards');
+  if (!cards) return;
+  cards.classList.remove('hidden');
+
+  const total = data.total_greeks_exits || 0;
+  const bt = data.by_trigger || {};
+
+  document.getElementById('gc-total').textContent = total;
+  const parts = [];
+  if (bt.theta_burn?.count) parts.push(`${bt.theta_burn.count} theta`);
+  if (bt.iv_crush?.count) parts.push(`${bt.iv_crush.count} IV`);
+  if (bt.delta_erosion?.count) parts.push(`${bt.delta_erosion.count} delta`);
+  document.getElementById('gc-breakdown').textContent = parts.join(', ') || 'none';
+
+  // Save rate
+  let totalSaved = 0, totalCount = 0;
+  for (const [, v] of Object.entries(bt)) {
+    if (v.count > 0) {
+      totalSaved += v.count * v.saved_pct / 100;
+      totalCount += v.count;
+    }
+  }
+  const saveRate = totalCount > 0 ? (totalSaved / totalCount * 100) : 0;
+  document.getElementById('gc-save-rate').textContent = saveRate.toFixed(0) + '%';
+  document.getElementById('gc-save-sub').textContent = `${Math.round(totalSaved)} saved / ${totalCount - Math.round(totalSaved)} premature`;
+
+  // Avg PnL
+  let pnlSum = 0, pnlN = 0;
+  for (const [, v] of Object.entries(bt)) {
+    if (v.count > 0) { pnlSum += v.avg_pnl * v.count; pnlN += v.count; }
+  }
+  const avgPnl = pnlN > 0 ? pnlSum / pnlN : 0;
+  const pnlEl = document.getElementById('gc-avg-pnl');
+  pnlEl.textContent = `$${avgPnl.toFixed(2)}`;
+  pnlEl.style.color = avgPnl >= 0 ? '#2a7a2a' : '#aa2222';
+  document.getElementById('gc-pct-of-total').textContent = data.greeks_exits_vs_total || '-';
+
+  document.getElementById('greeks-count').textContent = `${total} exits`;
+}
+
+function renderGreeksTrend(trend) {
+  const section = document.getElementById('greeks-trend-section');
+  const container = document.getElementById('greeks-trend-chart');
+  if (!section || !container) return;
+
+  if (!trend.length) {
+    section.classList.add('hidden');
+    return;
+  }
+  section.classList.remove('hidden');
+
+  const categories = trend.map(d => d.date.slice(5)); // MM-DD
+  const thetaData = trend.map(d => d.theta || 0);
+  const ivData = trend.map(d => d.iv || 0);
+  const deltaData = trend.map(d => d.delta || 0);
+
+  if (_greeksTrendChart) {
+    _greeksTrendChart.destroy();
+    _greeksTrendChart = null;
+  }
+
+  const opts = {
+    chart: {
+      type: 'bar',
+      stacked: true,
+      height: 210,
+      fontFamily: 'DM Sans, sans-serif',
+      toolbar: { show: false },
+      background: 'transparent',
+    },
+    series: [
+      { name: 'Theta Burn', data: thetaData },
+      { name: 'IV Crush', data: ivData },
+      { name: 'Delta Erosion', data: deltaData },
+    ],
+    colors: ['#e67e22', '#3498db', '#e74c3c'],
+    xaxis: { categories },
+    yaxis: { title: { text: 'Exits' }, forceNiceScale: true },
+    plotOptions: {
+      bar: { columnWidth: '60%', borderRadius: 2 },
+    },
+    dataLabels: { enabled: false },
+    legend: { position: 'top', fontSize: '11px' },
+    tooltip: {
+      shared: true,
+      intersect: false,
+    },
+    grid: { borderColor: '#e0d8c8' },
+  };
+
+  _greeksTrendChart = new ApexCharts(container, opts);
+  _greeksTrendChart.render();
+}
+
+function renderGreeksHeatmap(rows) {
+  const section = document.getElementById('greeks-heatmap-section');
+  const tbody = document.getElementById('greeks-heatmap-tbody');
+  if (!section || !tbody) return;
+
+  if (!rows.length) {
+    section.classList.add('hidden');
+    return;
+  }
+  section.classList.remove('hidden');
+
+  function hmClass(count) {
+    if (count >= 5) return 'hm-high';
+    if (count >= 1) return 'hm-mid';
+    return 'hm-none';
+  }
+  function saveClass(pct) {
+    if (pct >= 70) return 'hm-high';
+    if (pct >= 40) return 'hm-mid';
+    return 'hm-low';
+  }
+
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td style="font-weight:600;text-align:left">${r.sim_id}</td>
+      <td class="${hmClass(r.theta_count)}">${r.theta_count || '-'}</td>
+      <td class="${hmClass(r.iv_count)}">${r.iv_count || '-'}</td>
+      <td class="${hmClass(r.delta_count)}">${r.delta_count || '-'}</td>
+      <td style="font-weight:600">${r.total_greeks}</td>
+      <td class="${r.total_greeks > 0 ? saveClass(r.saved_pct) : 'hm-none'}">${r.total_greeks > 0 ? r.saved_pct + '%' : '-'}</td>
+      <td>${r.composite_score != null ? r.composite_score.toFixed(1) : '-'}</td>
+      <td>${r.total_trades}</td>
+    </tr>
+  `).join('');
+}
+
+function renderGreeksTuningLog(log) {
+  const section = document.getElementById('greeks-tuning-section');
+  const container = document.getElementById('greeks-tuning-log');
+  if (!section || !container) return;
+
+  if (!log.length) {
+    section.classList.remove('hidden');
+    container.innerHTML = '<div class="greeks-empty-state">No adaptive tuning changes yet. Tuning runs daily at 16:25 ET.</div>';
+    return;
+  }
+  section.classList.remove('hidden');
+
+  // Show most recent first
+  const entries = [...log].reverse().slice(0, 50);
+  container.innerHTML = entries.map(e => `
+    <div class="greeks-tuning-entry">
+      <span class="gte-time">${e.timestamp || '?'}</span>
+      <span class="gte-sim">${e.sim_id || '?'}</span>
+      <span class="gte-detail">${e.trigger || '?'}: ${e.field || '?'} ${e.old_value} &rarr; ${e.new_value}</span>
+      <span class="gte-reason">${e.reason || ''}</span>
+    </div>
+  `).join('');
 }

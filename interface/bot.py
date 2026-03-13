@@ -88,6 +88,17 @@ class QQQBot(commands.Bot):
         except Exception as e:
             logging.warning("startup_backfill_failed: %s", e)
             print(f"Startup backfill failed (non-fatal): {e}")
+        # Backfill missed predictions for today's gap
+        try:
+            from simulation.prediction_backfill import backfill_missed_predictions
+            print("Checking for prediction backfill...")
+            bf_result = await asyncio.to_thread(backfill_missed_predictions)
+            if bf_result.get("predictions_generated", 0) > 0:
+                print(f"Prediction backfill: {bf_result['predictions_generated']} predictions across {bf_result['total_slots']} slots")
+            else:
+                print(f"Prediction backfill: no gap ({bf_result.get('reason', 'up_to_date')})")
+        except Exception as e:
+            print(f"Prediction backfill failed (non-fatal): {e}")
         if not hasattr(self, "recorder_thread"):
             self.recorder_thread = start_recorder_background()
         self._init_state()

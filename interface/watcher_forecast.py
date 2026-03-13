@@ -14,6 +14,7 @@ from signals.predictor import make_prediction
 from signals.regime import get_regime
 from signals.volatility import volatility_state
 from analytics.prediction_stats import log_prediction
+from simulation.prediction_backfill import is_prediction_locked
 from interface.fmt import ab, A, lbl, conf_col
 
 
@@ -57,7 +58,8 @@ async def _run_forecast_cycle(
                 continue
             _sym_regime = get_regime(_sym_df)
             _sym_vola = volatility_state(_sym_df)
-            log_prediction(_sym_pred, _sym_regime, _sym_vola, symbol=_sym_upper)
+            if not is_prediction_locked():
+                log_prediction(_sym_pred, _sym_regime, _sym_vola, symbol=_sym_upper)
             _all_preds.append((_sym_upper, _sym_pred, _sym_regime, _sym_vola, _sym_df.iloc[-1]))
         except Exception:
             pass

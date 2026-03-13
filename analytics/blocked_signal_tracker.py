@@ -114,7 +114,7 @@ def update_blocked_outcomes(df=None) -> None:
         if signals.empty:
             return
 
-        signals["timestamp"] = pd.to_datetime(signals["timestamp"], errors="coerce")
+        signals["timestamp"] = pd.to_datetime(signals["timestamp"], utc=True, errors="coerce")
         signals = signals.dropna(subset=["timestamp"])
         if signals.empty:
             return

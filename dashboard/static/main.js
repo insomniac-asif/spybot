@@ -4586,11 +4586,14 @@ async function fetchIntelData() {
   if (loading) loading.style.display = '';
 
   try {
-    const [gates, blocked, ml, drift] = await Promise.all([
+    const [gates, blocked, ml, drift, summary, rankings, narratives] = await Promise.all([
       fetch('/api/intelligence/decision-gates').then(r => r.json()),
       fetch('/api/intelligence/blocked-signals').then(r => r.json()),
       fetch('/api/intelligence/ml-accuracy').then(r => r.json()),
       fetch('/api/intelligence/feature-drift').then(r => r.json()),
+      fetch('/api/intelligence/summary').then(r => r.json()).catch(() => null),
+      fetch('/api/intelligence/strategy-rankings').then(r => r.json()).catch(() => null),
+      fetch('/api/intelligence/trade-narrative?limit=15').then(r => r.json()).catch(() => null),
     ]);
 
     if (loading) loading.style.display = 'none';
@@ -4599,7 +4602,11 @@ async function fetchIntelData() {
     renderIntelBlocked(blocked);
     renderIntelML(ml);
     renderIntelDrift(drift);
+    if (summary) renderIntelSummary(summary);
+    if (rankings) renderStrategyLeaderboard(rankings);
+    if (narratives) renderTradeNarratives(narratives);
     fetchSystemHealth();
+    fetchPredictorChart();
   } catch (e) {
     console.error('Intel fetch error:', e);
     if (loading) loading.textContent = 'Failed to load intelligence data.';
@@ -4980,5 +4987,159 @@ async function fetchSystemHealth() {
     if (diskSubEl) diskSubEl.textContent = h.disk_total_gb != null ? `of ${h.disk_total_gb} GB total` : '—';
   } catch (e) {
     console.warn('Health fetch error:', e);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Intelligence: Summary Banner
+// ---------------------------------------------------------------------------
+function renderIntelSummary(data) {
+  const banner = document.getElementById('intel-summary-banner');
+  if (!banner) return;
+  banner.classList.remove('hidden');
+
+  const pnl = data.pnl || {};
+  const health = data.health || {};
+  const market = data.market || {};
+  const optimizer = data.strategy_optimizer || {};
+
+  const pnlEl = document.getElementById('is-pnl');
+  const pnlSub = document.getElementById('is-pnl-sub');
+  if (pnlEl) {
+    const today = pnl.today || 0;
+    pnlEl.textContent = (today >= 0 ? '+' : '') + '$' + today.toFixed(2);
+    pnlEl.style.color = today >= 0 ? 'var(--win-text)' : 'var(--loss-text)';
+  }
+  if (pnlSub) {
+    pnlSub.textContent = `Week: $${(pnl.this_week||0).toFixed(2)} | Month: $${(pnl.this_month||0).toFixed(2)}`;
+  }
+
+  const regEl = document.getElementById('is-regime');
+  const regSub = document.getElementById('is-regime-sub');
+  if (regEl) regEl.textContent = market.regime || 'UNKNOWN';
+  if (regSub) regSub.textContent = health.uptime ? `Uptime: ${health.uptime}` : '';
+
+  const stratEl = document.getElementById('is-top-strat');
+  const stratSub = document.getElementById('is-top-strat-sub');
+  if (stratEl) stratEl.textContent = optimizer.current_pick ? optimizer.current_pick.replace(/_/g, ' ') : '--';
+  if (stratSub) stratSub.textContent = optimizer.score ? `Score: ${optimizer.score}/100` : '';
+
+  const portEl = document.getElementById('is-portfolio');
+  const portSub = document.getElementById('is-portfolio-sub');
+  if (portEl) portEl.textContent = `${health.active_sims || 0} sims`;
+  if (portSub) portSub.textContent = `${health.open_trades || 0} open trades`;
+}
+
+// ---------------------------------------------------------------------------
+// Intelligence: Strategy Leaderboard
+// ---------------------------------------------------------------------------
+function renderStrategyLeaderboard(data) {
+  const section = document.getElementById('intel-strategy-section');
+  const tbody = document.getElementById('intel-strategy-tbody');
+  if (!section || !tbody) return;
+
+  const rankings = data.rankings || [];
+  if (!rankings.length) return;
+
+  section.classList.remove('hidden');
+  tbody.innerHTML = '';
+
+  rankings.forEach((r, i) => {
+    const tr = document.createElement('tr');
+    const wr = r.win_rate != null ? (r.win_rate * 100).toFixed(0) + '%' : '--';
+    const wrColor = r.win_rate >= 0.55 ? 'var(--win-text)' : r.win_rate < 0.45 ? 'var(--loss-text)' : 'inherit';
+    const scoreColor = r.score >= 60 ? 'var(--win-text)' : r.score < 40 ? 'var(--loss-text)' : 'inherit';
+    const rfEmoji = r.regime_fit >= 0.8 ? '&#10003;' : r.regime_fit >= 0.5 ? '~' : '&#10007;';
+
+    tr.innerHTML = `
+      <td>${i + 1}</td>
+      <td>${(r.signal_mode || '').replace(/_/g, ' ')}</td>
+      <td style="color:${scoreColor};font-weight:600">${r.score != null ? r.score.toFixed(1) : '--'}</td>
+      <td style="color:${wrColor}">${wr}</td>
+      <td>$${r.expectancy != null ? r.expectancy.toFixed(2) : '--'}</td>
+      <td>${r.profit_factor != null ? r.profit_factor.toFixed(2) : '--'}</td>
+      <td>${r.trade_count || 0}</td>
+      <td>${rfEmoji} ${r.regime_fit != null ? (r.regime_fit * 100).toFixed(0) + '%' : '--'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Intelligence: Trade Narratives
+// ---------------------------------------------------------------------------
+function renderTradeNarratives(data) {
+  const section = document.getElementById('intel-narrative-section');
+  const list = document.getElementById('intel-narrative-list');
+  if (!section || !list) return;
+
+  const trades = data.trades || [];
+  if (!trades.length) return;
+
+  section.classList.remove('hidden');
+  list.innerHTML = '';
+
+  trades.forEach(t => {
+    const card = document.createElement('div');
+    card.className = 'intel-narrative-card';
+    const pnl = t.pnl;
+    const icon = pnl == null ? '\u{1F7E1}' : pnl > 0 ? '\u{1F7E2}' : '\u{1F534}';
+    const pnlStr = pnl != null ? (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2) : 'open';
+    const pnlColor = pnl == null ? '#999' : pnl >= 0 ? 'var(--win-text)' : 'var(--loss-text)';
+
+    const timeStr = t.exit_time ? new Date(t.exit_time).toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit', hour12:true}) : '';
+
+    card.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span>${icon} <strong>${t.sim_id}</strong> | ${t.symbol || 'SPY'} | ${(t.signal_mode || '').replace(/_/g, ' ')}</span>
+        <span style="color:${pnlColor};font-weight:600">${pnlStr}</span>
+      </div>
+      <div style="color:#aaa;font-size:0.85em">${t.narrative || ''}</div>
+      ${timeStr ? `<div style="color:#666;font-size:0.8em;margin-top:2px">${timeStr}</div>` : ''}
+    `;
+    list.appendChild(card);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Intelligence: Predictor Accuracy by Hour Chart
+// ---------------------------------------------------------------------------
+let _predictorChart = null;
+
+async function fetchPredictorChart() {
+  try {
+    const data = await fetch('/api/intelligence/predictor-stats').then(r => r.json());
+    if (data.error || !data.by_hour || !data.by_hour.length) return;
+
+    const section = document.getElementById('intel-predictor-section');
+    if (section) section.classList.remove('hidden');
+
+    const el = document.getElementById('intel-predictor-chart');
+    if (!el) return;
+
+    const hours = data.by_hour.map(h => h.hour + ':00');
+    const accuracies = data.by_hour.map(h => +(h.accuracy * 100).toFixed(1));
+
+    const opts = {
+      chart: { type: 'bar', height: 230, background: 'transparent', toolbar: { show: false } },
+      series: [{ name: 'Accuracy %', data: accuracies }],
+      xaxis: { categories: hours, labels: { style: { colors: '#bbb', fontSize: '10px' } } },
+      yaxis: { min: 0, max: 100, labels: { style: { colors: '#bbb' } }, title: { text: 'Accuracy %', style: { color: '#888' } } },
+      colors: ['#4ecdc4'],
+      plotOptions: { bar: { borderRadius: 3, columnWidth: '60%' } },
+      annotations: { yaxis: [{ y: 50, borderColor: '#666', strokeDashArray: 4, label: { text: '50% baseline', style: { color: '#888', background: 'transparent' } } }] },
+      tooltip: { theme: 'dark', y: { formatter: v => v.toFixed(1) + '%' } },
+      theme: { mode: 'dark' },
+      grid: { borderColor: '#333' },
+    };
+
+    if (_predictorChart) {
+      _predictorChart.updateOptions(opts);
+    } else {
+      _predictorChart = new ApexCharts(el, opts);
+      _predictorChart.render();
+    }
+  } catch (e) {
+    console.warn('Predictor chart error:', e);
   }
 }

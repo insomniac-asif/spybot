@@ -50,6 +50,7 @@ from dashboard.app_helpers import (
     CHARTS_DIR,
 )
 from dashboard.app_helpers2 import _handle_get_sim
+from dashboard.api_intelligence import router as intelligence_router
 
 # ---------------------------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -69,6 +70,7 @@ async def lifespan(app):
 
 app = FastAPI(title="SpyBot Dashboard", docs_url=None, redoc_url=None, lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["GET"], allow_headers=["*"])
+app.include_router(intelligence_router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 

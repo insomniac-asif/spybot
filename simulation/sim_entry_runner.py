@@ -242,16 +242,28 @@ async def run_sim_entries(
                 if str(signal_mode).upper() == "OPPORTUNITY":
                     try:
                         from simulation.sim_signals import derive_opportunity_signal
+                        # Load real sim states so the ranker's historical scoring works
+                        try:
+                            from simulation.strategy_evaluator import get_sim_states_for_ranker
+                            _sim_states = await asyncio.to_thread(get_sim_states_for_ranker)
+                        except Exception:
+                            _sim_states = {}
                         _opp_dir, _opp_price, _opp_meta = await asyncio.to_thread(
                             derive_opportunity_signal,
                             sim_df,
-                            {},  # sim_states not available here; ranker uses trade logs internally
+                            _sim_states,
                             regime,
                             trader_signal=trader_signal,
                         )
                         direction = _opp_dir
                         underlying_price = _opp_price
                         signal_meta = _opp_meta
+                        # Persist rankings for dashboard
+                        try:
+                            from simulation.strategy_evaluator import persist_rankings
+                            await asyncio.to_thread(persist_rankings, None)
+                        except Exception:
+                            pass
                     except Exception:
                         logging.exception("opportunity_signal_error: sim=%s", sim_id)
                         direction = None

@@ -3462,3 +3462,24 @@ th[data-tip]:hover::after { opacity: 1; }
   background: rgba(180,40,40,0.3);
   border-color: rgba(200,50,50,0.7);
 }
+
+/* Intelligence: Narrative Cards */
+.intel-narrative-card {
+  background: rgba(30,30,30,0.6);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 6px;
+}
+.intel-narrative-card:hover {
+  border-color: rgba(255,255,255,0.15);
+  background: rgba(40,40,40,0.7);
+}
+
+/* Intelligence: Summary banner spacing */
+#intel-summary-banner {
+  margin-bottom: 12px;
+}
+#intel-summary-banner .greeks-card-value {
+  font-size: 1.3em;
+}

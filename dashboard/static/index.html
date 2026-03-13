@@ -385,6 +385,64 @@
       <div id="intel-drift-detail"></div>
     </div>
 
+    <!-- Intelligence Summary Banner -->
+    <div class="greeks-cards-row hidden" id="intel-summary-banner">
+      <div class="greeks-card">
+        <div class="greeks-card-label">Today's P&amp;L</div>
+        <div class="greeks-card-value" id="is-pnl">--</div>
+        <div class="greeks-card-sub" id="is-pnl-sub">loading...</div>
+      </div>
+      <div class="greeks-card">
+        <div class="greeks-card-label">Market Regime</div>
+        <div class="greeks-card-value" id="is-regime">--</div>
+        <div class="greeks-card-sub" id="is-regime-sub"></div>
+      </div>
+      <div class="greeks-card">
+        <div class="greeks-card-label">Top Strategy</div>
+        <div class="greeks-card-value" id="is-top-strat">--</div>
+        <div class="greeks-card-sub" id="is-top-strat-sub"></div>
+      </div>
+      <div class="greeks-card">
+        <div class="greeks-card-label">Portfolio</div>
+        <div class="greeks-card-value" id="is-portfolio">--</div>
+        <div class="greeks-card-sub" id="is-portfolio-sub"></div>
+      </div>
+    </div>
+
+    <!-- Strategy Leaderboard -->
+    <div class="greeks-section hidden" id="intel-strategy-section">
+      <div class="greeks-section-title">Strategy Leaderboard</div>
+      <div class="table-scroll-wrap">
+        <table class="greeks-heatmap-table intel-blocked-table" id="intel-strategy-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Signal Mode</th>
+              <th>Score</th>
+              <th>Win Rate</th>
+              <th>Expectancy</th>
+              <th>P/F</th>
+              <th>Trades</th>
+              <th>Regime Fit</th>
+            </tr>
+          </thead>
+          <tbody id="intel-strategy-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Trade Narrative Feed -->
+    <div class="greeks-section hidden" id="intel-narrative-section">
+      <div class="greeks-section-title">Recent Trade Feed</div>
+      <div id="intel-narrative-list" style="max-height:400px;overflow-y:auto;"></div>
+    </div>
+
+    <!-- Predictor Analytics Chart -->
+    <div class="greeks-section hidden" id="intel-predictor-section">
+      <div class="greeks-section-title">Predictor Accuracy by Hour</div>
+      <div id="intel-predictor-chart" style="height:250px;"></div>
+    </div>
+
     <!-- System Health -->
     <div class="greeks-section" id="intel-health-section">
       <div class="greeks-section-title">🖥️ System Health</div>

@@ -443,7 +443,7 @@ SIM08:
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
 SIM09:
-  name: Opportunity Follower
+  name: Strategy Optimizer
   symbols:
   - SPY
   - QQQ
@@ -455,21 +455,21 @@ SIM09:
   - MSFT
   horizon: adaptive
   signal_mode: OPPORTUNITY
-  features_enabled: false
+  features_enabled: true
   dte_min: 0
-  dte_max: 7
+  dte_max: 14
   otm_pct: 0.005
   hold_min_seconds: 300
-  hold_max_seconds: 86400
+  hold_max_seconds: 604800
   cutoff_time_et: '15:30'
   balance_start: 3000
   small_account_mode: true
   death_threshold: 150
   max_position_pct: 0.25
-  risk_per_trade_pct: 0.04
-  daily_loss_limit_pct: 0.08
-  max_open_trades: 1
-  exposure_cap_pct: 0.25
+  risk_per_trade_pct: 0.02
+  daily_loss_limit_pct: 0.06
+  max_open_trades: 2
+  exposure_cap_pct: 0.20
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01

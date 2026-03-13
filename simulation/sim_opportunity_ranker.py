@@ -69,6 +69,30 @@ _REGIME_ALIGNMENT_MATRIX = {
         "TRENDING_UP": 80, "TRENDING_DOWN": 80,
         "RANGE_BOUND": 40, "VOLATILE": 50, None: 50,
     },
+    "VWAP_REVERSION": {
+        "TRENDING_UP": 30, "TRENDING_DOWN": 30,
+        "RANGE_BOUND": 90, "VOLATILE": 45, None: 50,
+    },
+    "ZSCORE_BOUNCE": {
+        "TRENDING_UP": 25, "TRENDING_DOWN": 25,
+        "RANGE_BOUND": 85, "VOLATILE": 50, None: 50,
+    },
+    "FAILED_BREAKOUT_REVERSAL": {
+        "TRENDING_UP": 40, "TRENDING_DOWN": 40,
+        "RANGE_BOUND": 55, "VOLATILE": 75, None: 50,
+    },
+    "VWAP_CONTINUATION": {
+        "TRENDING_UP": 85, "TRENDING_DOWN": 85,
+        "RANGE_BOUND": 20, "VOLATILE": 40, None: 50,
+    },
+    "OPENING_DRIVE": {
+        "TRENDING_UP": 80, "TRENDING_DOWN": 80,
+        "RANGE_BOUND": 30, "VOLATILE": 60, None: 50,
+    },
+    "AFTERNOON_BREAKOUT": {
+        "TRENDING_UP": 65, "TRENDING_DOWN": 65,
+        "RANGE_BOUND": 35, "VOLATILE": 70, None: 50,
+    },
 }
 
 # Hardcoded fallback timeframe parameters per mode
@@ -79,6 +103,12 @@ _MODE_TIMEFRAMES_FALLBACK = {
     "ORB_BREAKOUT":      {"dte_min": 0, "dte_max": 0, "hold_max_minutes": 15},
     "SWING_TREND":       {"dte_min": 1, "dte_max": 7, "hold_max_minutes": 1440},
     "TRADER_CONVICTION": {"dte_min": 0, "dte_max": 1, "hold_max_minutes": 90},
+    "VWAP_REVERSION":           {"dte_min": 0, "dte_max": 1, "hold_max_minutes": 30},
+    "ZSCORE_BOUNCE":            {"dte_min": 0, "dte_max": 1, "hold_max_minutes": 45},
+    "FAILED_BREAKOUT_REVERSAL": {"dte_min": 0, "dte_max": 1, "hold_max_minutes": 30},
+    "VWAP_CONTINUATION":        {"dte_min": 0, "dte_max": 2, "hold_max_minutes": 60},
+    "OPENING_DRIVE":            {"dte_min": 0, "dte_max": 0, "hold_max_minutes": 45},
+    "AFTERNOON_BREAKOUT":       {"dte_min": 0, "dte_max": 1, "hold_max_minutes": 60},
 }
 
 # Ranker only evaluates these core signal modes (avoids sparse/exotic modes)
@@ -89,6 +119,12 @@ _RANKABLE_MODES = [
     "ORB_BREAKOUT",
     "SWING_TREND",
     "TRADER_CONVICTION",
+    "VWAP_REVERSION",
+    "ZSCORE_BOUNCE",
+    "FAILED_BREAKOUT_REVERSAL",
+    "VWAP_CONTINUATION",
+    "OPENING_DRIVE",
+    "AFTERNOON_BREAKOUT",
 ]
 
 
@@ -512,6 +548,7 @@ class OpportunityRanker:
             _signal_swing_trend,
             _signal_orb_breakout,
         )
+        from simulation.sim_signals import derive_sim_signal
 
         normalised_states = self._build_sim_states_summary(sim_states or {})
         candidates: list[CandidateScore] = []
@@ -537,6 +574,11 @@ class OpportunityRanker:
                         elif mode == "ORB_BREAKOUT":
                             # ORB requires feature_snapshot — skip without it
                             direction, price, signal_meta = None, None, {"reason": "no_feature_snapshot"}
+                        elif mode in ("VWAP_REVERSION", "ZSCORE_BOUNCE",
+                                      "FAILED_BREAKOUT_REVERSAL", "VWAP_CONTINUATION",
+                                      "OPENING_DRIVE", "AFTERNOON_BREAKOUT"):
+                            # Use generic dispatch for expanded modes
+                            direction, price, signal_meta = derive_sim_signal(df, mode, {})
                         else:
                             direction, price, signal_meta = None, None, None
                     except Exception:

@@ -67,7 +67,7 @@ def _get_symbols_for_profile(profile: dict) -> list:
         return [str(profile["symbol"]).upper()]
     if profile.get("underlying"):
         return [str(profile["underlying"]).upper()]
-    return ["SPY"]
+    return []
 
 
 def main():
@@ -83,6 +83,15 @@ def main():
                         help="Skip SIM00 (live execution sim). Default: True.")
     parser.add_argument("--adaptive", action="store_true",
                         help="Enable adaptive optimization (learn from each run)")
+    parser.add_argument("--patterns", action="store_true",
+                        help="Run pattern scanner on completed backtest trades")
+    parser.add_argument("--growth", action="store_true",
+                        help="Run growth analysis (milestones, PDT, streaks, Sharpe)")
+    parser.add_argument("--optimize", action="store_true",
+                        help="Run parameter optimizer with walk-forward validation")
+    parser.add_argument("--objective", default="growth",
+                        choices=["growth", "winrate", "balanced"],
+                        help="Optimizer objective function (default: growth)")
     args = parser.parse_args()
 
     verbose = not args.no_verbose
@@ -138,8 +147,48 @@ def main():
         prefetch_stock_data(sorted(all_symbols), start_date, end_date)
         print("Pre-fetch complete.\n")
 
+    # ── Optimize mode: run grid-search instead of normal backtest ──────
+    if args.optimize:
+        from backtest.optimizer import SimOptimizer
+        total_start = time.time()
+        for sim_id in profiles:
+            optimizer = SimOptimizer(sim_id, start_date, end_date,
+                                    objective=args.objective)
+            result = optimizer.run()
+
+            print(f"\n  {'=' * 60}")
+            print(f"  Top 10 Parameter Sets for {sim_id} "
+                  f"(objective={args.objective}):")
+            print(f"  {'Rank':>4} {'TP':>6} {'SL':>6} {'HoldMax':>8} "
+                  f"{'TrainScore':>11} {'TestScore':>10} "
+                  f"{'Consistency':>12} {'Overfit?':>9}")
+            print(f"  {'-'*4} {'-'*6} {'-'*6} {'-'*8} "
+                  f"{'-'*11} {'-'*10} {'-'*12} {'-'*9}")
+            for entry in result.get("top_10", []):
+                p = entry["params"]
+                ovf = "YES" if entry["overfit_flag"] else "no"
+                print(f"  {entry['rank']:>4} {p['tp']:>6.2f} {p['sl']:>6.2f} "
+                      f"{p['hold_max']:>6}m "
+                      f"{entry['avg_train_score']:>11.2f} "
+                      f"{entry['avg_test_score']:>10.2f} "
+                      f"{entry['consistency']*100:>10.0f}% "
+                      f"{ovf:>9}")
+            bl = result.get("baseline_params", {})
+            print(f"\n  Baseline: TP={bl.get('tp')} SL={bl.get('sl')} "
+                  f"HoldMax={bl.get('hold_max')}m")
+            print(f"  Saved to: backtest/results/optimizer_{sim_id}.json")
+
+        total_elapsed = time.time() - total_start
+        print(f"\nTotal optimization time: {total_elapsed:.1f}s")
+        print("Done.")
+        sys.exit(0)
+
     from backtest.engine import BacktestEngine
     from backtest.save_results import save_sim_summary, save_dashboard_data
+    if args.patterns:
+        from backtest.pattern_scanner import PatternScanner
+    if args.growth:
+        from backtest.growth_simulator import GrowthSimulator
 
     all_summaries = []
     total_start = time.time()
@@ -192,6 +241,85 @@ def main():
                 if af.blocked_direction: print(f"    Blocked dir:    {af.blocked_direction}")
                 if af.required_direction: print(f"    Required dir:   {af.required_direction}")
                 if af.max_hold_seconds: print(f"    Max hold:       {af.max_hold_seconds}s ({af.max_hold_seconds//60}min)")
+
+            # Pattern scanning
+            if args.patterns:
+                all_trades = []
+                for r in (summary.runs if hasattr(summary, "runs") else []):
+                    trades_list = r.get("trades", []) if isinstance(r, dict) else (r.trades if hasattr(r, "trades") else [])
+                    for t in trades_list:
+                        td = dict(t) if isinstance(t, dict) else {
+                            "entry_time": t.entry_time, "exit_time": t.exit_time,
+                            "direction": t.direction, "realized_pnl_dollars": t.pnl,
+                            "holding_seconds": t.holding_seconds, "symbol": t.symbol,
+                            "signal_mode": t.signal_mode, "exit_reason": t.exit_reason,
+                        }
+                        td.setdefault("realized_pnl_dollars", td.get("pnl"))
+                        all_trades.append(td)
+
+                scanner = PatternScanner()
+                patterns = scanner.scan(all_trades, sim_id)
+                if patterns:
+                    print(f"\n  Top Patterns for {sim_id} ({len(patterns)} found):")
+                    print(f"  {'Rank':<5} {'Pattern':<40} {'WinRate':>8} {'PF':>6} {'Trades':>7} {'AvgPnL':>8} {'Freq/wk':>8} {'Recurrence':<22}")
+                    print(f"  {'-'*5} {'-'*40} {'-'*8} {'-'*6} {'-'*7} {'-'*8} {'-'*8} {'-'*22}")
+                    for i, p in enumerate(patterns[:10], 1):
+                        desc = p["description"][:40]
+                        ra = p.get("recurrence_analysis", {})
+                        interval = ra.get("primary_interval", "?")
+                        reg = ra.get("regularity_score", 0)
+                        recur_str = f"{interval} ({reg:.2f})"
+                        print(f"  {i:<5} {desc:<40} {p['win_rate']*100:>7.1f}% {p['profit_factor']:>6.2f} {p['total_trades']:>7} {p['avg_pnl']:>7.2f} {p['trades_per_week']:>7.2f} {recur_str:<22}")
+                    print(f"  Saved to: backtest/results/patterns_{sim_id}.json")
+                else:
+                    print(f"\n  No patterns meeting thresholds for {sim_id}")
+
+            # Growth analysis
+            if args.growth:
+                all_trades_g = []
+                all_equity = []
+                for r in (summary.runs if hasattr(summary, "runs") else []):
+                    trades_list = r.get("trades", []) if isinstance(r, dict) else (r.trades if hasattr(r, "trades") else [])
+                    eq_curve = r.get("equity_curve", []) if isinstance(r, dict) else (r.equity_curve if hasattr(r, "equity_curve") else [])
+                    for t in trades_list:
+                        td = dict(t) if isinstance(t, dict) else {
+                            "entry_time": t.entry_time, "exit_time": t.exit_time,
+                            "direction": t.direction, "realized_pnl_dollars": t.pnl,
+                            "holding_seconds": t.holding_seconds, "symbol": t.symbol,
+                            "signal_mode": t.signal_mode, "exit_reason": t.exit_reason,
+                            "run_number": t.run_number,
+                        }
+                        td.setdefault("realized_pnl_dollars", td.get("pnl"))
+                        td.setdefault("run_number", r.get("run_number", 1) if isinstance(r, dict) else (r.run_number if hasattr(r, "run_number") else 1))
+                        all_trades_g.append(td)
+                    all_equity.extend(eq_curve)
+
+                gs = GrowthSimulator()
+                growth = gs.analyze(summary, all_trades_g, all_equity)
+
+                ec = growth["end_capital"]
+                print(f"\n  Growth Analysis for {sim_id}:")
+                print(f"    ${growth['start_capital']:.0f} -> ${ec:,.0f} | {growth['total_trades']} trades | {growth['win_rate']*100:.0f}% WR | {growth['deaths']} deaths")
+
+                ms_parts = []
+                for m_val in [1000, 2500, 5000]:
+                    m_data = growth["milestones"].get(str(m_val))
+                    if m_data:
+                        ms_parts.append(f"${m_val//1000}K in {m_data['days']}d ({m_data['trades']} trades)")
+                    else:
+                        ms_parts.append(f"${m_val//1000}K: NOT REACHED")
+                print(f"    Milestones: {', '.join(ms_parts)}")
+
+                pdt = growth["pdt_violations"]
+                pdt_str = f"{pdt} (would need cash account or PDT awareness)" if pdt > 0 else "0"
+                print(f"    PDT violations: {pdt_str}")
+                print(f"    Max DD: {growth['max_drawdown_pct']*100:.1f}% | Sharpe: {growth['daily_sharpe']:.1f} | Best streak: {growth['best_win_streak']}W | Worst: {growth['worst_loss_streak']}L")
+
+                bd = growth["best_day"]
+                wd = growth["worst_day"]
+                if bd["date"]:
+                    print(f"    Best day: {bd['date']} (${bd['pnl']:+.2f}) | Worst day: {wd['date']} (${wd['pnl']:+.2f})")
+                print(f"    Saved to: backtest/results/growth_{sim_id}.json")
 
         except KeyboardInterrupt:
             print("\nInterrupted by user.")

@@ -565,6 +565,52 @@ async def run_sim_entries(
                     except Exception:
                         pass
 
+                # ── IV rank entry gate (universal, configurable per sim) ──
+                _iv_rank_max = None
+                try:
+                    _v = effective_profile.get("iv_rank_max")
+                    if _v is None:
+                        _v = _GLOBAL_CONFIG.get("iv_rank_max")
+                    if _v is not None:
+                        _iv_rank_max = float(_v)
+                except (TypeError, ValueError):
+                    pass
+                if _iv_rank_max is None:
+                    _iv_rank_max = 0.65  # default threshold
+
+                _iv_rank_val = None
+                if isinstance(feature_snapshot, dict):
+                    _iv_rank_val = feature_snapshot.get("iv_rank_proxy")
+                if _iv_rank_val is None:
+                    # Compute from IV series if available
+                    try:
+                        from simulation.sim_contract import get_iv_series as _giv
+                        from analytics.iv_features import compute_iv_features as _civ
+                        _iv_win = int(effective_profile.get("iv_series_window", 200))
+                        _iv_ser = _giv(_iv_win)
+                        if _iv_ser and len(_iv_ser) >= 20:
+                            _last_iv = _iv_ser[-1] if _iv_ser else None
+                            _iv_feats = _civ(list(_iv_ser), _last_iv)
+                            _iv_rank_val = _iv_feats.get("iv_rank_proxy")
+                    except Exception:
+                        pass
+
+                if _iv_rank_val is not None:
+                    try:
+                        if float(_iv_rank_val) > _iv_rank_max:
+                            results.append({
+                                "sim_id": sim_id,
+                                "status": "skipped",
+                                "reason": "iv_too_expensive",
+                                "iv_rank": round(float(_iv_rank_val), 3),
+                                "iv_rank_max": _iv_rank_max,
+                                "entry_context": entry_context,
+                                "signal_mode": signal_mode,
+                            })
+                            continue
+                    except (TypeError, ValueError):
+                        pass
+
                 # ── 5. ML prediction with real direction/price ─────────
                 from datetime import datetime
                 import pytz

@@ -7,6 +7,7 @@ Portfolio-level checks (daily loss, max open, etc.) remain in SimPortfolio.can_t
 """
 
 import logging
+import threading
 import time
 from typing import Tuple
 
@@ -28,6 +29,7 @@ class LiveRiskSupervisor:
 
     def __init__(self, runtime_state) -> None:
         self.runtime = runtime_state
+        self._lock = threading.Lock()
         self._emergency_kill: bool = False
         self._kill_reason: str = ""
         self._last_bar_time: float = 0.0
@@ -38,27 +40,33 @@ class LiveRiskSupervisor:
     # ── Freshness stamps ───────────────────────────────────────────────────
 
     def update_bar_freshness(self, ts: float) -> None:
-        self._last_bar_time = ts
+        with self._lock:
+            self._last_bar_time = ts
 
     def update_quote_freshness(self, ts: float) -> None:
-        self._last_quote_time = ts
+        with self._lock:
+            self._last_quote_time = ts
 
     def update_account_freshness(self, ts: float) -> None:
-        self._last_account_time = ts
+        with self._lock:
+            self._last_account_time = ts
 
     def update_broker_health(self, ts: float) -> None:
-        self._last_broker_success = ts
+        with self._lock:
+            self._last_broker_success = ts
 
     # ── Kill switch ────────────────────────────────────────────────────────
 
     def emergency_kill(self, reason: str) -> None:
-        self._emergency_kill = True
-        self._kill_reason = reason
+        with self._lock:
+            self._emergency_kill = True
+            self._kill_reason = reason
         logger.critical("EMERGENCY_KILL: %s", reason)
 
     def clear_kill(self) -> None:
-        self._emergency_kill = False
-        self._kill_reason = ""
+        with self._lock:
+            self._emergency_kill = False
+            self._kill_reason = ""
         logger.info("kill_switch_cleared")
 
     @property
@@ -80,25 +88,24 @@ class LiveRiskSupervisor:
         """
         now = time.time()
 
-        if self._emergency_kill:
-            return False, f"emergency_kill: {self._kill_reason}"
+        with self._lock:
+            if self._emergency_kill:
+                return False, f"emergency_kill: {self._kill_reason}"
+
+            bar_age = now - self._last_bar_time if self._last_bar_time > 0 else float("inf")
+            quote_age = now - self._last_quote_time if self._last_quote_time > 0 else float("inf")
+            acct_age = now - self._last_account_time if self._last_account_time > 0 else float("inf")
+            broker_age = now - self._last_broker_success if self._last_broker_success > 0 else float("inf")
 
         if not self.runtime.can_enter_trades():
             return False, f"runtime_state={self.runtime.state.value}: {self.runtime.reason}"
 
-        bar_age = now - self._last_bar_time if self._last_bar_time > 0 else float("inf")
         if bar_age > _BAR_STALE_SEC:
             return False, f"stale_bars: {bar_age:.0f}s (limit {_BAR_STALE_SEC:.0f}s)"
-
-        quote_age = now - self._last_quote_time if self._last_quote_time > 0 else float("inf")
         if quote_age > _QUOTE_STALE_SEC:
             return False, f"stale_quotes: {quote_age:.0f}s (limit {_QUOTE_STALE_SEC:.0f}s)"
-
-        acct_age = now - self._last_account_time if self._last_account_time > 0 else float("inf")
         if acct_age > _ACCOUNT_STALE_SEC:
             return False, f"stale_account: {acct_age:.0f}s (limit {_ACCOUNT_STALE_SEC:.0f}s)"
-
-        broker_age = now - self._last_broker_success if self._last_broker_success > 0 else float("inf")
         if broker_age > _BROKER_STALE_SEC:
             return False, f"broker_unreachable: {broker_age:.0f}s (limit {_BROKER_STALE_SEC:.0f}s)"
 
@@ -118,11 +125,12 @@ class LiveRiskSupervisor:
         def age(ts: float):
             return round(now - ts, 1) if ts > 0 else None
 
-        return {
-            "emergency_kill":      self._emergency_kill,
-            "kill_reason":         self._kill_reason,
-            "bar_age_seconds":     age(self._last_bar_time),
-            "quote_age_seconds":   age(self._last_quote_time),
-            "account_age_seconds": age(self._last_account_time),
-            "broker_age_seconds":  age(self._last_broker_success),
-        }
+        with self._lock:
+            return {
+                "emergency_kill":      self._emergency_kill,
+                "kill_reason":         self._kill_reason,
+                "bar_age_seconds":     age(self._last_bar_time),
+                "quote_age_seconds":   age(self._last_quote_time),
+                "account_age_seconds": age(self._last_account_time),
+                "broker_age_seconds":  age(self._last_broker_success),
+            }

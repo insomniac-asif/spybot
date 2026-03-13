@@ -28,21 +28,25 @@ class SimCommands(commands.Cog, name="Sims"):
 
     # ── simstats ──────────────────────────────────────────────────────────
     @commands.command(name="simstats")
+    @commands.cooldown(1, 10, commands.BucketType.user)
     async def simstats(self, ctx, sim_id: str | None = None):
         await handle_simstats(ctx, sim_id)
 
     # ── simcompare ────────────────────────────────────────────────────────
     @commands.command(name="simcompare")
+    @commands.cooldown(1, 15, commands.BucketType.user)
     async def simcompare(self, ctx):
         await handle_simcompare(ctx)
 
     # ── simleaderboard ────────────────────────────────────────────────────
     @commands.command(name="simleaderboard")
+    @commands.cooldown(1, 15, commands.BucketType.user)
     async def simleaderboard(self, ctx):
         await handle_simleaderboard(ctx)
 
     # ── simreport ─────────────────────────────────────────────────────────
     @commands.command(name="simreport")
+    @commands.cooldown(1, 15, commands.BucketType.user)
     async def simreport(self, ctx, sim_id: str | None = None):
         if not sim_id:
             await ctx.send("Usage: `!simreport <SIM_ID>` e.g. `!simreport SIM05`")
@@ -240,6 +244,7 @@ class SimCommands(commands.Cog, name="Sims"):
 
     # ── simanalyze ────────────────────────────────────────────────────────
     @commands.command(name="simanalyze")
+    @commands.cooldown(1, 15, commands.BucketType.user)
     async def simanalyze(self, ctx, sim_id: str | None = None, action: str | None = None):
         try:
             from simulation.trade_analyzer import (

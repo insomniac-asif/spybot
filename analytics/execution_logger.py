@@ -10,6 +10,7 @@
 # Use this to build a realistic slippage model for sim profiles over time.
 
 import os
+import logging
 from datetime import datetime
 import pytz
 
@@ -104,4 +105,4 @@ def log_execution(
             "spread_at_order_pct": spread_at_order_pct,
         })
     except Exception:
-        pass
+        logging.error("execution_log_insert_failed: %s %s", option_symbol, side, exc_info=True)

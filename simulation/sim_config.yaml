@@ -22,6 +22,7 @@ _global:
   max_family_concurrent: 2
   correlation_guard_enabled: true
   max_correlated_group_sims: 6
+  max_global_open_trades: 20
   small_account_mode: true
   default_balance_start: 3000
   death_threshold: 150

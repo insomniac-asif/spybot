@@ -16,6 +16,7 @@ class LiveCommands(commands.Cog, name="Live"):
         self.bot = bot
 
     @commands.command(name="kill")
+    @commands.is_owner()
     async def cmd_kill(self, ctx, *, reason: str = "operator triggered"):
         """Activate the emergency kill switch — blocks all new live entries."""
         try:
@@ -36,6 +37,7 @@ class LiveCommands(commands.Cog, name="Live"):
             await ctx.send(f"Kill switch error: {e}")
 
     @commands.command(name="unkill")
+    @commands.is_owner()
     async def cmd_unkill(self, ctx):
         """Clear the emergency kill switch."""
         try:
@@ -53,6 +55,7 @@ class LiveCommands(commands.Cog, name="Live"):
             await ctx.send(f"Unkill error: {e}")
 
     @commands.command(name="reconcile")
+    @commands.is_owner()
     async def cmd_reconcile(self, ctx):
         """Force a broker vs internal state reconciliation check."""
         await ctx.send("Running reconciliation…")

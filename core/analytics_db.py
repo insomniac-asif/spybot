@@ -495,3 +495,43 @@ def init_db():
     """Ensure schema exists and migrate CSV data on first run."""
     ensure_schema()
     migrate_from_csv()
+
+
+def backup_analytics_db(db_path: str = DB_PATH, backup_dir: str | None = None) -> str | None:
+    """Create a daily backup of analytics.db using SQLite's backup API.
+
+    Keeps last 7 backups.  Returns the backup path on success, None on failure.
+    """
+    from datetime import datetime as _dt
+    from pathlib import Path
+
+    if backup_dir is None:
+        backup_dir = os.path.join(DATA_DIR, "backups")
+    bp = Path(backup_dir)
+    bp.mkdir(parents=True, exist_ok=True)
+
+    date_str = _dt.now().strftime("%Y%m%d")
+    dest = bp / f"analytics_{date_str}.db"
+
+    if dest.exists():
+        return str(dest)
+
+    try:
+        source = sqlite3.connect(db_path)
+        target = sqlite3.connect(str(dest))
+        source.backup(target)
+        target.close()
+        source.close()
+        logging.error("Analytics DB backed up to %s", dest)
+
+        # Rotate: keep last 7 backups
+        backups = sorted(bp.glob("analytics_*.db"))
+        while len(backups) > 7:
+            oldest = backups.pop(0)
+            oldest.unlink()
+            logging.error("Rotated old backup: %s", oldest)
+
+        return str(dest)
+    except Exception as e:
+        logging.error("Analytics DB backup FAILED: %s", e)
+        return None

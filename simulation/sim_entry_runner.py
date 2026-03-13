@@ -7,7 +7,7 @@ import asyncio
 import logging
 import random
 
-from simulation.sim_portfolio import SimPortfolio
+from simulation.sim_portfolio import SimPortfolio, get_sim_lock
 from simulation.sim_contract import get_iv_series
 from execution.option_executor import get_option_price  # noqa: F401 (kept for compat)
 from simulation.sim_signals import derive_sim_signal, get_signal_family
@@ -22,6 +22,7 @@ from simulation.sim_entry_helpers import (
     _trade_grade,
     _count_directional_exposure,
     _count_family_directional_exposure,
+    _count_global_open_trades,
     _check_circuit_breaker,
     _build_paper_trade_dict,
     _execute_live_entry,
@@ -113,8 +114,21 @@ async def run_sim_entries(
 
     _ordered_ids = _paper_ids + (["SIM00"] if "SIM00" in _all_sim_ids else [])
 
+    # ── Global portfolio exposure limit ──────────────────────────────────
+    _max_global = _GLOBAL_CONFIG.get("max_global_open_trades")
+    if _max_global is not None:
+        try:
+            _global_open = _count_global_open_trades()
+            if _global_open >= int(_max_global):
+                logging.error("global_exposure_cap_hit: %d open trades >= limit %s", _global_open, _max_global)
+                return [{"sim_id": None, "status": "skipped", "reason": "global_exposure_cap"}]
+        except Exception:
+            pass
+
     for sim_id in _ordered_ids:
         profile = _PROFILES[sim_id]
+        _sim_lock = get_sim_lock(sim_id)
+        await _sim_lock.acquire()
         try:
             sim = SimPortfolio(sim_id, profile)
             await asyncio.to_thread(sim.load)
@@ -865,6 +879,8 @@ async def run_sim_entries(
         except Exception as e:
             logging.exception("run_sim_entries_error: %s", e)
             results.append({"sim_id": sim_id, "status": "error", "reason": str(e)})
+        finally:
+            _sim_lock.release()
 
     # Batch-log candidates for skipped/blocked and live_submitted results.
     # "opened" + "no-fire" are already logged inline above.

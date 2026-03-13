@@ -165,6 +165,19 @@ def run_startup_phase_gates():
     secret_key = os.getenv("APCA_API_SECRET_KEY")
     if not api_key or not secret_key:
         errors.append("alpaca_api_keys_missing")
+    else:
+        # Verify Alpaca connectivity with a real API call
+        try:
+            from alpaca.trading.client import TradingClient
+            _client = TradingClient(api_key, secret_key, paper=True)
+            _acct = _client.get_account()
+            logging.error(
+                "Alpaca connectivity OK: status=%s equity=$%s",
+                _acct.status, _acct.equity,
+            )
+        except Exception as e:
+            errors.append(f"alpaca_connectivity_failed:{e}")
+            logging.error("ALPACA CONNECTIVITY FAILED: %s", e)
 
     # Initialize SQLite analytics DB (create tables, migrate CSV data)
     try:

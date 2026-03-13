@@ -558,6 +558,15 @@ async def journal_auto_save_loop():
             from analytics.trade_journal import save_daily_journal
             path = await asyncio.to_thread(save_daily_journal)
             logging.error("journal_auto_save: saved %s", path)
+
+            # Daily analytics DB backup (piggyback on journal schedule)
+            try:
+                from core.analytics_db import backup_analytics_db
+                bk = await asyncio.to_thread(backup_analytics_db)
+                if bk:
+                    logging.error("daily_db_backup: %s", bk)
+            except Exception:
+                logging.exception("daily_db_backup_error")
         except Exception:
             logging.exception("journal_auto_save_error")
         await asyncio.sleep(30)

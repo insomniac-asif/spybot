@@ -110,6 +110,7 @@ class MarketCommands(commands.Cog, name="Market"):
         await _symbol_snapshot(ctx,"MSFT")
 
     @commands.command(name="quote")
+    @commands.cooldown(1, 5, commands.BucketType.user)
     async def quote(self, ctx, symbol: str | None = None):
         """Generic: !quote <SYMBOL>"""
         if not symbol:

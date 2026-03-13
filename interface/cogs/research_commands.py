@@ -74,6 +74,7 @@ class ResearchCommands(commands.Cog, name="Research"):
     # ── !ask ──────────────────────────────────────────────────────────────────
 
     @commands.command(name="ask")
+    @commands.cooldown(1, 15, commands.BucketType.user)
     async def cmd_ask(self, ctx, *, question=None):
 
         if not question:
@@ -235,6 +236,7 @@ class ResearchCommands(commands.Cog, name="Research"):
     # ── !research ─────────────────────────────────────────────────────────────
 
     @commands.command(name="research")
+    @commands.cooldown(1, 30, commands.BucketType.user)
     async def cmd_research(self, ctx, subcmd: str | None = None, *args):
         if not _RESEARCH_AVAILABLE:
             embed = discord.Embed(title="Research Unavailable", description="Research modules failed to import.", color=0xE74C3C)

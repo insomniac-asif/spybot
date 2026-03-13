@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 import asyncio
@@ -24,6 +25,20 @@ from execution.option_executor_helpers import (
 )
 
 _SNAPSHOT_CACHE_TTL = 10.0  # seconds — for ResponseCache (short-lived mid-fill quotes)
+
+
+async def _safe_fire_sell(coro_or_fn, *, label: str, symbol: str, qty: int) -> None:
+    """Run a sell coroutine/thread in a task with error logging (not fire-and-forget)."""
+    try:
+        if asyncio.iscoroutine(coro_or_fn):
+            await coro_or_fn
+        else:
+            await coro_or_fn
+    except Exception:
+        logging.error(
+            "fire_sell_failed: label=%s symbol=%s qty=%d", label, symbol, qty,
+            exc_info=True,
+        )
 
 
 async def _sleep(seconds: float) -> None:
@@ -84,8 +99,8 @@ async def _poll_fill_loop(
                     fill_price=fill_price, bid_at_order=bid, ask_at_order=ask,
                 )
                 if fill_price > expected_mid * 1.10:
-                    try:
-                        asyncio.create_task(asyncio.to_thread(client.submit_order,
+                    asyncio.create_task(_safe_fire_sell(
+                        asyncio.to_thread(client.submit_order,
                             LimitOrderRequest(
                                 symbol=option_symbol,
                                 qty=quantity,
@@ -94,9 +109,9 @@ async def _poll_fill_loop(
                                 limit_price=float(fill_price),
                                 position_intent=PositionIntent.SELL_TO_CLOSE,
                             )
-                        ))
-                    except Exception:
-                        pass
+                        ),
+                        label="slippage_guard_full", symbol=option_symbol, qty=quantity,
+                    ))
                     _increment_no_record_exit(acc, "slippage_guard_triggered")
                     return None, "slippage_guard_triggered"
                 return {
@@ -134,17 +149,17 @@ async def _poll_fill_loop(
                     accepted=fill_ratio >= 0.5,
                 )
                 if fill_ratio < 0.5:
-                    try:
-                        asyncio.create_task(asyncio.to_thread(close_option_position, option_symbol, min(qty_val, quantity)))
-                    except Exception:
-                        pass
+                    asyncio.create_task(_safe_fire_sell(
+                        asyncio.to_thread(close_option_position, option_symbol, min(qty_val, quantity)),
+                        label="partial_fill_close", symbol=option_symbol, qty=min(qty_val, quantity),
+                    ))
                     if ctx is not None:
                         ctx.set_block("partial_fill_below_threshold")
                     _increment_no_record_exit(acc, "partial_fill_below_threshold")
                     return None, "partial_fill_below_threshold"
                 if filled_price > expected_mid * 1.10:
-                    try:
-                        asyncio.create_task(asyncio.to_thread(client.submit_order,
+                    asyncio.create_task(_safe_fire_sell(
+                        asyncio.to_thread(client.submit_order,
                             LimitOrderRequest(
                                 symbol=option_symbol,
                                 qty=min(qty_val, quantity),
@@ -153,9 +168,9 @@ async def _poll_fill_loop(
                                 limit_price=float(filled_price),
                                 position_intent=PositionIntent.SELL_TO_CLOSE,
                             )
-                        ))
-                    except Exception:
-                        pass
+                        ),
+                        label="slippage_guard_partial", symbol=option_symbol, qty=min(qty_val, quantity),
+                    ))
                     _increment_no_record_exit(acc, "slippage_guard_triggered")
                     return None, "slippage_guard_triggered"
                 log_execution(
@@ -324,8 +339,14 @@ def close_option_position(option_symbol: str, quantity: int) -> dict:
             fill_ratio=1.0, expected_mid=None,
             fill_price=filled_avg_price, bid_at_order=None, ask_at_order=None,
         )
+        return {"ok": True, "filled_avg_price": filled_avg_price, "order_id": order_id}
 
-    return {"ok": True, "filled_avg_price": filled_avg_price, "order_id": order_id}
+    # Fill not confirmed within poll timeout — do NOT report as successful
+    logging.error(
+        "close_option_fill_not_confirmed: symbol=%s qty=%d order_id=%s",
+        option_symbol, quantity, order_id,
+    )
+    return {"ok": False, "error": "fill_not_confirmed", "filled_avg_price": None, "order_id": order_id}
 
 
 def get_option_price(option_symbol: str):

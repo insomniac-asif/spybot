@@ -33,6 +33,22 @@ def _trade_grade(tr) -> "float | None":
     return max(candidates) if candidates else None
 
 
+def _count_global_open_trades() -> int:
+    """Count total open trades across ALL sims."""
+    _PROFILES, _ = _get_profiles_and_global()
+    total = 0
+    for sid, prof in _PROFILES.items():
+        if str(sid).startswith("_"):
+            continue
+        try:
+            s = SimPortfolio(sid, prof)
+            s.load()
+            total += len(s.open_trades)
+        except Exception:
+            continue
+    return total
+
+
 def _count_directional_exposure(direction: str, symbol: "str | None" = None) -> int:
     """Count how many sims have open trades in the given direction (optionally per symbol)."""
     _PROFILES, _ = _get_profiles_and_global()

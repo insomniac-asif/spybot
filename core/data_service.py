@@ -1,6 +1,7 @@
 # core/data_service.py
 
 import os
+import fcntl
 import logging
 import pandas as pd
 import pandas_ta as ta
@@ -300,8 +301,14 @@ def get_symbol_dataframe(symbol: str):
                                 _cols = [c for c in ["timestamp", "open", "high", "low", "close", "volume"] if c in fresh.columns]
                                 _to_save = fresh[_cols].sort_values("timestamp").drop_duplicates("timestamp", keep="last")
                                 _tmp = csv_path + ".tmp"
-                                _to_save.to_csv(_tmp, index=False)
-                                os.replace(_tmp, csv_path)
+                                _lock_fd = open(csv_path + ".lock", "w")
+                                try:
+                                    fcntl.flock(_lock_fd, fcntl.LOCK_EX)
+                                    _to_save.to_csv(_tmp, index=False)
+                                    os.replace(_tmp, csv_path)
+                                finally:
+                                    fcntl.flock(_lock_fd, fcntl.LOCK_UN)
+                                    _lock_fd.close()
                             except Exception:
                                 pass
                         else:
@@ -578,8 +585,14 @@ def startup_backfill_all():
             combined["timestamp"] = combined["timestamp"].dt.strftime("%Y-%m-%d %H:%M:%S")
 
             tmp = csv_path + ".tmp"
-            combined.to_csv(tmp, index=False)
-            os.replace(tmp, csv_path)
+            lock_fd = open(csv_path + ".lock", "w")
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_EX)
+                combined.to_csv(tmp, index=False)
+                os.replace(tmp, csv_path)
+            finally:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                lock_fd.close()
             results[sym] = len(fresh_df)
             print(f"  {sym}: +{len(fresh_df)} bars (now {len(combined)} total, last={combined['timestamp'].iloc[-1]})")
 
@@ -661,7 +674,15 @@ def backfill_symbol_csvs(min_bars: int = 100):
             # Remove sparse day, append fresh
             before = df[df["timestamp"].dt.date < last_date]
             result = pd.concat([before, fresh_df], ignore_index=True).sort_values("timestamp")
-            result.to_csv(csv_path, index=False)
+            tmp = csv_path + ".tmp"
+            lock_fd = open(csv_path + ".lock", "w")
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_EX)
+                result.to_csv(tmp, index=False)
+                os.replace(tmp, csv_path)
+            finally:
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                lock_fd.close()
             results[sym] = {"bars": len(fresh_df), "date": last_date}
             logging.error("backfill_complete: %s got %d bars for %s (was %d)", sym, len(fresh_df), last_date, len(day_bars))
 

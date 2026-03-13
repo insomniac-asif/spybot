@@ -10,7 +10,7 @@ from datetime import datetime, time
 
 import pytz
 
-from simulation.sim_portfolio import SimPortfolio
+from simulation.sim_portfolio import SimPortfolio, get_sim_lock
 from simulation.sim_executor import sim_try_fill
 from simulation.sim_live_router import manage_live_exit
 from execution.option_executor import get_option_price
@@ -31,6 +31,9 @@ from simulation.sim_exit_helpers import (
 
 DAYTRADE_EOD_CUTOFF = time(15, 55)  # ET cutoff for day-trading sims to flatten
 EXPIRY_EOD_CUTOFF = time(15, 55)    # ET cutoff for same-day expiries
+
+# Track consecutive get_option_price failures per trade
+_price_fail_counts: dict[str, int] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +72,8 @@ async def run_sim_exits() -> list[dict]:
     eastern = pytz.timezone("US/Eastern")
 
     for sim_id, profile in _PROFILES.items():
+        _sim_lock = get_sim_lock(sim_id)
+        await _sim_lock.acquire()
         try:
             sim = SimPortfolio(sim_id, profile)
             await asyncio.to_thread(sim.load)
@@ -79,6 +84,7 @@ async def run_sim_exits() -> list[dict]:
                 "status": "error",
                 "reason": str(e)
             })
+            _sim_lock.release()
             continue
         if profile.get("execution_mode") == "live" and profile.get("enabled"):
             for trade in list(sim.open_trades):
@@ -115,6 +121,7 @@ async def run_sim_exits() -> list[dict]:
                         "status": "error",
                         "reason": str(e)
                     })
+            _sim_lock.release()
             continue
         for trade in list(sim.open_trades):
             try:
@@ -129,8 +136,22 @@ async def run_sim_exits() -> list[dict]:
                 _set_chain_ts(_time.monotonic())
                 current_price = await asyncio.to_thread(get_option_price, trade["option_symbol"])
                 if current_price is None:
-                    logging.warning("sim_exit_missing_quote: %s", trade["trade_id"])
+                    _tid = trade.get("trade_id", "unknown")
+                    _price_fail_counts[_tid] = _price_fail_counts.get(_tid, 0) + 1
+                    _fc = _price_fail_counts[_tid]
+                    logging.error(
+                        "sim_exit_missing_quote: sim=%s trade=%s symbol=%s consecutive_fails=%d",
+                        sim_id, _tid, trade.get("option_symbol"), _fc,
+                    )
+                    if _fc >= 5:
+                        logging.error(
+                            "CRITICAL: %d consecutive price failures for %s/%s. "
+                            "Exit protection disabled for this trade.",
+                            _fc, sim_id, trade.get("option_symbol"),
+                        )
                     continue
+                # Reset counter on successful price fetch
+                _price_fail_counts.pop(trade.get("trade_id", ""), None)
                 sim.update_open_trade_excursion(trade["trade_id"], current_price)
                 # Force exit for same-day expiry (all sims) before market close
                 expiry_date = None
@@ -314,4 +335,5 @@ async def run_sim_exits() -> list[dict]:
                     "status": "error",
                     "reason": str(e)
                 })
+        _sim_lock.release()
     return results

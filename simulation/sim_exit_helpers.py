@@ -119,8 +119,15 @@ def _evaluate_exit_conditions(trade, profile, sim, current_price, elapsed_second
                     else:
                         exit_reason = "stop_loss"
                         exit_context = f"loss_pct={loss_pct:.3%} <= -{effective_sl_pct:.3%}"
-        except (TypeError, ValueError):
-            pass
+        except (TypeError, ValueError) as e:
+            logging.error(
+                "SL_CALC_FAILED: trade=%s entry_price=%s current=%s error=%s — FORCING EXIT",
+                trade.get("trade_id"), trade.get("entry_price"), current_price, e,
+            )
+            should_exit = True
+            exit_reason = "exit_calc_error"
+            exit_context = f"stop_loss_calc_failed: {e}"
+            spread_guard_bypass = True
 
     profit_target_pct = profile.get("profit_target_pct")
     entry_price = None
@@ -220,8 +227,15 @@ def _evaluate_exit_conditions(trade, profile, sim, current_price, elapsed_second
                     should_exit = True
                     exit_reason = "profit_target_2" if trade.get("tp2_activated") else "profit_target"
                     exit_context = f"gain_pct={gain_pct:.3%} >= {target_val:.3%} decay={decay_factor:.2f}"
-        except (TypeError, ValueError):
-            pass
+        except (TypeError, ValueError) as e:
+            logging.error(
+                "TP_CALC_FAILED: trade=%s entry_price=%s current=%s error=%s — FORCING EXIT",
+                trade.get("trade_id"), trade.get("entry_price"), current_price, e,
+            )
+            should_exit = True
+            exit_reason = "exit_calc_error"
+            exit_context = f"profit_target_calc_failed: {e}"
+            spread_guard_bypass = True
 
     # ── Structure-aware trailing stop ─────────────────
     if not should_exit and profile.get("structure_trail_enabled"):
@@ -306,8 +320,15 @@ def _evaluate_exit_conditions(trade, profile, sim, current_price, elapsed_second
                             should_exit = True
                             exit_reason = "trailing_stop"
                             exit_context = f"drop_from_high={drop_from_high:.3%} <= -{trailing_trail_f:.3%} (high={trail_high:.4f})"
-        except (TypeError, ValueError):
-            pass
+        except (TypeError, ValueError) as e:
+            logging.error(
+                "TRAILING_CALC_FAILED: trade=%s entry_price=%s current=%s error=%s — FORCING EXIT",
+                trade.get("trade_id"), trade.get("entry_price"), current_price, e,
+            )
+            should_exit = True
+            exit_reason = "exit_calc_error"
+            exit_context = f"trailing_stop_calc_failed: {e}"
+            spread_guard_bypass = True
 
     # ── Configurable Greeks exits (opt-in per-sim via profile keys) ─────────
     # Run AFTER standard exits — a profitable trade will never be ejected here.

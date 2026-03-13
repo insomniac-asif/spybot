@@ -142,6 +142,7 @@ Analyzes:
     # ── system ────────────────────────────────────────────────────────────────
 
     @commands.command(name="system")
+    @commands.cooldown(1, 10, commands.BucketType.user)
     async def system(self, ctx):
         import pytz
         from datetime import datetime
@@ -219,6 +220,7 @@ Analyzes:
     # ── backfill ──────────────────────────────────────────────────────────────
 
     @commands.command(name="backfill")
+    @commands.cooldown(1, 30, commands.BucketType.user)
     async def backfill(self, ctx, days: int = 30, symbol: str = "all"):
         """
         Backfill historical 1m candles from Alpaca.
@@ -317,6 +319,7 @@ Analyzes:
     # ── query ─────────────────────────────────────────────────────────────────
 
     @commands.command(name="query")
+    @commands.cooldown(1, 10, commands.BucketType.user)
     async def query(self, ctx, sim_id: str = None, page: int = 1):
         """Query trade journal DB. Usage: !query [SIM03] [page]"""
         from core.trade_db import query_trades, trade_count
@@ -492,6 +495,7 @@ Analyzes:
     # ── retrain ───────────────────────────────────────────────────────────────
 
     @commands.command(name="retrain")
+    @commands.cooldown(1, 60, commands.BucketType.user)
     async def retrain(self, ctx):
 
         feature_file = os.path.join(DATA_DIR, "trade_features.csv")

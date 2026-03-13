@@ -154,10 +154,13 @@ def check_health():
 # ==============================
 
 async def start_heartbeat():
+    _start = time.time()
     while True:
         try:
-            # Log the bot's heartbeat
-            logging.info("Bot is alive at " + str(time.time()))
+            uptime_s = int(time.time() - _start)
+            hours, rem = divmod(uptime_s, 3600)
+            mins = rem // 60
+            logging.error("HEARTBEAT: Bot alive | uptime=%dh%dm", hours, mins)
         except Exception as e:
             logging.exception(f"Heartbeat error: {e}")
         await asyncio.sleep(600)  # log every 10 minutes

@@ -34,6 +34,29 @@ _PROFILES = _load_profiles()
 EOD_CUTOFF = datetime.strptime("15:55", "%H:%M").time()
 
 
+def _is_option_expired(trade: dict) -> bool:
+    """Check if the option in this trade has already expired."""
+    from datetime import date
+    today = date.today()
+    expiry = trade.get("expiry")
+    if isinstance(expiry, str):
+        try:
+            expiry_date = datetime.fromisoformat(expiry.replace("Z", "+00:00")).date()
+            return today > expiry_date
+        except ValueError:
+            pass
+    # Try OCC symbol format: ROOT YYMMDD C/P STRIKE
+    option_symbol = trade.get("option_symbol", "")
+    if len(option_symbol) >= 15:
+        try:
+            date_str = option_symbol[-15:-9]
+            expiry_date = datetime.strptime(date_str, "%y%m%d").date()
+            return today > expiry_date
+        except (ValueError, IndexError):
+            pass
+    return False
+
+
 async def sim_live_router(sim_id, direction, price, ml_prediction=None, regime=None, time_of_day_bucket=None, signal_mode=None, entry_context=None, feature_snapshot=None, symbol=None):
     try:
         try:
@@ -83,7 +106,16 @@ async def sim_live_router(sim_id, direction, price, ml_prediction=None, regime=N
         daily_loss_limit = profile.get("daily_loss_limit")
         if daily_loss_limit is not None:
             try:
-                if float(sim.daily_loss) >= float(daily_loss_limit):
+                # Include unrealized open-trade losses in daily loss check
+                _current_prices = {}
+                for _t in sim.open_trades:
+                    _osym = _t.get("option_symbol", "") if isinstance(_t, dict) else ""
+                    if _osym:
+                        _cp = await asyncio.to_thread(get_option_price, _osym)
+                        if _cp is not None:
+                            _current_prices[_osym] = _cp
+                _total_loss = sim.get_daily_loss_including_unrealized(_current_prices)
+                if _total_loss >= float(daily_loss_limit):
                     return {"status": "error", "message": "daily_loss_limit"}
             except (TypeError, ValueError):
                 pass
@@ -133,7 +165,14 @@ async def sim_live_router(sim_id, direction, price, ml_prediction=None, regime=N
         if risk_dollars < 50.0:
             risk_dollars = 50.0
 
+        MAX_LIVE_CONTRACTS = 10  # absolute ceiling — never exceed regardless of math
         qty = max(1, math.floor(risk_dollars / (mid_val * 100)))
+        if qty > MAX_LIVE_CONTRACTS:
+            logging.error(
+                "Large qty computed for %s: qty=%d (risk=$%.2f, mid=$%.4f). Capping at %d.",
+                contract.get("option_symbol"), qty, risk_dollars, mid_val, MAX_LIVE_CONTRACTS,
+            )
+            qty = MAX_LIVE_CONTRACTS
 
         open_exposure = 0.0
         for t in sim.open_trades:
@@ -230,9 +269,54 @@ async def manage_live_exit(sim, trade):
     try:
         if not isinstance(trade, dict):
             return {"status": "error", "message": "invalid_trade"}
+
+        # Skip if emergency exit is already closing this trade
+        _trade_id = trade.get("trade_id", "")
+        try:
+            from interface.watcher_emergency import is_emergency_closing
+            if is_emergency_closing(_trade_id):
+                return {"status": "skipped", "message": "emergency_close_in_progress"}
+        except ImportError:
+            pass
+
         option_symbol = trade.get("option_symbol")
         if not option_symbol:
             return {"status": "error", "message": "missing_symbol"}
+
+        # Check if option has expired — write off as total loss
+        if _is_option_expired(trade):
+            logging.error(
+                "EXPIRED_OPTION: sim=%s trade=%s symbol=%s — writing off as $0",
+                sim.sim_id, trade.get("trade_id"), option_symbol,
+            )
+            entry_p = float(trade.get("entry_price", 0) or 0)
+            qty_v = int(trade.get("qty", 1) or 1)
+            pnl_dollars = -(entry_p * qty_v * 100)
+            exit_data = {
+                "exit_price": 0.0,
+                "exit_time": _now_et_iso(),
+                "exit_reason": "expired_worthless",
+                "exit_context": f"option_symbol={option_symbol}",
+                "exit_price_source": "expired",
+                "exit_quote_model": "expired",
+                "entry_price_source": trade.get("entry_price_source", "live_fill"),
+                "time_in_trade_seconds": 0,
+                "spread_guard_bypassed": True,
+            }
+            sim.record_close(trade.get("trade_id"), exit_data)
+            sim.save()
+            record_sim_trade_close(trade, pnl_dollars)
+            return {
+                "status": "success",
+                "exit_price": 0.0,
+                "exit_reason": "expired_worthless",
+                "option_symbol": option_symbol,
+                "pnl": pnl_dollars,
+                "qty": qty_v,
+                "entry_price": trade.get("entry_price"),
+                "balance_after": sim.balance,
+            }
+
         entry_time = trade.get("entry_time")
         if not entry_time:
             return {"status": "error", "message": "missing_entry_time"}
@@ -272,7 +356,7 @@ async def manage_live_exit(sim, trade):
 
         current_price = await asyncio.to_thread(get_option_price, option_symbol)
         if current_price is None:
-            logging.warning("sim_live_exit_missing_price: %s", trade.get("trade_id"))
+            logging.error("sim_live_exit_missing_price: trade_id=%s symbol=%s", trade.get("trade_id"), option_symbol)
             return {"status": "error", "message": "missing_price"}
 
         sim.update_open_trade_excursion(trade.get("trade_id"), current_price)
@@ -306,7 +390,12 @@ async def manage_live_exit(sim, trade):
 
         close_result = await asyncio.to_thread(close_option_position, option_symbol, qty_val)
         if not close_result.get("ok"):
-            logging.warning("sim_live_exit_failed: %s", trade.get("trade_id"))
+            logging.error(
+                "sim_live_exit_failed: trade_id=%s symbol=%s error=%s order_id=%s",
+                trade.get("trade_id"), option_symbol,
+                close_result.get("error", "unknown"),
+                close_result.get("order_id"),
+            )
             return {"status": "error", "message": "exit_failed"}
 
         filled_avg_price = close_result.get("filled_avg_price")

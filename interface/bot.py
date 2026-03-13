@@ -1,6 +1,6 @@
 # INTERFACE LAYER — Entry Point
 
-import os, asyncio, json, logging, discord
+import os, asyncio, json, logging, signal, discord
 from logging.handlers import RotatingFileHandler
 from discord.ext import commands
 from dotenv import load_dotenv
@@ -346,8 +346,60 @@ async def tradereplay(ctx, sim_id: str = None, trade_index: int = 1):
         await _send_embed(ctx, f"⚠️ Error generating trade replay for `{sid}`.")
 
 
+async def _shutdown_handler():
+    """Force-exit SIM00 live positions on shutdown."""
+    logging.error("SHUTDOWN: Graceful shutdown initiated. Closing SIM00 positions...")
+    try:
+        import yaml
+        from simulation.sim_portfolio import SimPortfolio, get_sim_lock
+        _base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        _cfg_path = os.path.join(_base, "simulation", "sim_config.yaml")
+        with open(_cfg_path) as _f:
+            _profiles = yaml.safe_load(_f) or {}
+        _sim00_profile = _profiles.get("SIM00", {})
+        if not isinstance(_sim00_profile, dict) or _sim00_profile.get("execution_mode") != "live":
+            logging.error("SHUTDOWN: SIM00 not live-mode. Nothing to close.")
+            return
+        lock = get_sim_lock("SIM00")
+        async with lock:
+            sim = SimPortfolio("SIM00", _sim00_profile)
+            sim.load()
+            if not sim.open_trades:
+                logging.error("SHUTDOWN: No open SIM00 positions. Clean exit.")
+                return
+            from execution.option_executor import close_option_position
+            for trade in list(sim.open_trades):
+                option_symbol = trade.get("option_symbol")
+                qty = int(trade.get("qty", 1) or 1)
+                if option_symbol and qty > 0:
+                    logging.error("SHUTDOWN: Closing %s (qty=%d)", option_symbol, qty)
+                    try:
+                        result = await asyncio.to_thread(close_option_position, option_symbol, qty)
+                        logging.error("SHUTDOWN: Close result for %s: ok=%s", option_symbol, result.get("ok"))
+                    except Exception as e:
+                        logging.error("SHUTDOWN: Failed to close %s: %s", option_symbol, e)
+    except Exception as e:
+        logging.error("SHUTDOWN: Error during graceful shutdown: %s", e)
+    logging.error("SHUTDOWN: Complete.")
+
+
+def _setup_signal_handlers(loop):
+    """Register SIGTERM/SIGINT handlers for graceful shutdown."""
+    def handle_signal(sig):
+        logging.error("Received signal %s. Initiating graceful shutdown.", sig.name)
+        loop.create_task(_shutdown_handler())
+        loop.call_later(15, lambda: loop.stop())
+
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        try:
+            loop.add_signal_handler(sig, handle_signal, sig)
+        except NotImplementedError:
+            pass  # Windows doesn't support add_signal_handler
+
+
 @bot.event
 async def on_ready():
+    _setup_signal_handlers(asyncio.get_event_loop())
     print(f"Bot online as {bot.user}")
 
 print("TOKEN LOADED: ", DISCORD_TOKEN is not None)

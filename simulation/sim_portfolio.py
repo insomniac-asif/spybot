@@ -1,4 +1,5 @@
 # simulation/sim_portfolio.py
+import asyncio
 import json
 import logging
 import os
@@ -10,6 +11,19 @@ import pytz
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 SIM_DIR = os.path.join(DATA_DIR, "sims")
+
+# ---------------------------------------------------------------------------
+# Per-sim async lock registry — prevents concurrent load-mutate-save races
+# between entry_runner, exit_runner, and watcher_emergency.
+# ---------------------------------------------------------------------------
+_sim_locks: dict[str, asyncio.Lock] = {}
+
+
+def get_sim_lock(sim_id: str) -> asyncio.Lock:
+    """Return (or create) an asyncio.Lock for the given sim_id."""
+    if sim_id not in _sim_locks:
+        _sim_locks[sim_id] = asyncio.Lock()
+    return _sim_locks[sim_id]
 
 
 class SimPortfolio:
@@ -151,6 +165,26 @@ class SimPortfolio:
             self.daily_loss = 0.0
             self.last_trade_day = today
             self.save()
+
+    def get_daily_loss_including_unrealized(self, current_prices: dict) -> float:
+        """Total daily loss = realized closed P&L + unrealized open P&L."""
+        realized = self.daily_loss
+        unrealized = 0.0
+        for trade in self.open_trades:
+            if not isinstance(trade, dict):
+                continue
+            entry_price = trade.get("entry_price")
+            qty = trade.get("qty")
+            option_symbol = trade.get("option_symbol", "")
+            current = current_prices.get(option_symbol)
+            if current is not None and entry_price is not None:
+                try:
+                    loss = (float(entry_price) - float(current)) * float(qty) * 100
+                    if loss > 0:
+                        unrealized += loss
+                except (TypeError, ValueError):
+                    pass
+        return realized + unrealized
 
     def can_trade(self) -> tuple[bool, str]:
         # Dead sims may still exit open positions but must not open new ones

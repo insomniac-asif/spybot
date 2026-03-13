@@ -42,7 +42,7 @@ packaging==26.0
 pandas==2.3.2
 pandas-ta==0.4.71b0
 pandas_market_calendars==5.3.0
-pillow==12.1.0
+pillow==12.1.1
 pluggy==1.6.0
 propcache==0.4.1
 pyarrow==23.0.1

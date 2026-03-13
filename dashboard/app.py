@@ -1081,19 +1081,9 @@ async def equity_curve():
             running += float(pnl)
             points[day] = points.get(day, 0) + float(pnl)
 
-    # Build cumulative series
-    if not points:
-        return {"series": [], "total_balance": 0}
-
-    sorted_days = sorted(points.keys())
-    cumulative = 0
-    series = []
-    for day in sorted_days:
-        cumulative += points[day]
-        series.append({"date": day, "pnl": round(cumulative, 2)})
-
-    # Compute current total balance across alive sims
+    # Compute current total balance across alive sims (always, even with no trades)
     total_balance = 0
+    alive_count = 0
     for sid, profile in config.items():
         if str(sid).startswith("_") or not isinstance(profile, dict):
             continue
@@ -1102,8 +1092,22 @@ async def equity_curve():
         data = _load_sim(sid)
         if data and not data.get("is_dead"):
             total_balance += data.get("balance", 0)
+            alive_count += 1
 
-    return {"series": series, "total_balance": round(total_balance, 2)}
+    # Build cumulative series
+    if not points:
+        return {"series": [], "total_balance": round(total_balance, 2),
+                "alive_count": alive_count}
+
+    sorted_days = sorted(points.keys())
+    cumulative = 0
+    series = []
+    for day in sorted_days:
+        cumulative += points[day]
+        series.append({"date": day, "pnl": round(cumulative, 2)})
+
+    return {"series": series, "total_balance": round(total_balance, 2),
+            "alive_count": alive_count}
 
 
 # ---------------------------------------------------------------------------

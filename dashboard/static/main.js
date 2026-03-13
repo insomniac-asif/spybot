@@ -4886,14 +4886,15 @@ async function renderEquityCurve() {
     const data = await r.json();
 
     const balEl = document.getElementById('equity-balance');
-    if (balEl && data.total_balance) {
-      balEl.textContent = `$${data.total_balance.toLocaleString()}`;
-      balEl.style.color = data.series.length && data.series[data.series.length - 1].pnl >= 0 ? 'var(--win-text)' : 'var(--loss-text)';
+    if (balEl && data.total_balance != null) {
+      const aliveLabel = data.alive_count ? ` (${data.alive_count} sims)` : '';
+      balEl.textContent = `$${data.total_balance.toLocaleString()}${aliveLabel}`;
+      balEl.style.color = data.series.length && data.series[data.series.length - 1].pnl < 0 ? 'var(--loss-text)' : 'var(--win-text)';
     }
 
     if (!data.series || !data.series.length) {
-      const wrap = document.getElementById('equity-curve-wrap');
-      if (wrap) wrap.style.display = 'none';
+      const chartEl = document.getElementById('equity-chart');
+      if (chartEl) chartEl.innerHTML = '<div style="text-align:center;color:#667;padding:40px 0;font-size:12px">No trades yet — equity curve will appear after first closed trade</div>';
       return;
     }
 

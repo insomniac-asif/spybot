@@ -3,8 +3,8 @@ backtest/exit_adapter.py
 Synchronous exit condition checker extracted from sim_exit_helpers._evaluate_exit_conditions().
 
 Handles:
-- stop_loss_pct: if option price drops X% from entry -> exit
-- profit_target_pct: if option price rises X% -> exit
+- stop_loss_pct: if option price drops X% from entry -> exit (with time-decay adjustment)
+- profit_target_pct: if option price rises X% -> exit (with time-decay adjustment)
 - trailing_stop: after profit lock, trail behind peak
 - hold_max_seconds: time-based exit
 - EOD: force close at 15:58 ET
@@ -12,10 +12,51 @@ Handles:
 Returns (should_exit: bool, reason: str, exit_price: float)
 """
 from __future__ import annotations
-from datetime import datetime, time as dt_time
+from datetime import datetime, time as dt_time, date as dt_date
 import pytz
 
 EOD_FORCE_CLOSE = dt_time(15, 58)  # Force close all positions at 15:58 ET
+MARKET_CLOSE_MINUTES = 390  # 9:30-16:00 = 390 minutes
+
+
+def _compute_decay_factor(current_bar_ts, trade: dict, profile: dict) -> float:
+    """Compute time-decay factor for TP/SL adjustment.
+
+    For DTE <= 1: use minutes_to_close / 390 (intraday decay)
+    For DTE > 1: use days_to_expiry / max_dte (multi-day decay)
+    Returns 1.0 (no decay) if not applicable.
+    """
+    try:
+        # Check DTE
+        expiry_raw = trade.get("expiry")
+        if not isinstance(expiry_raw, str):
+            return 1.0
+
+        expiry_date = datetime.fromisoformat(expiry_raw).date()
+        if isinstance(current_bar_ts, datetime):
+            if current_bar_ts.tzinfo is not None:
+                bar_et = current_bar_ts.astimezone(pytz.timezone("America/New_York"))
+            else:
+                bar_et = current_bar_ts
+            current_date = bar_et.date()
+        else:
+            return 1.0
+
+        dte = (expiry_date - current_date).days
+
+        if dte <= 1:
+            # Intraday decay: 1.0 at open, 0.0 at close
+            market_close = bar_et.replace(hour=16, minute=0, second=0, microsecond=0)
+            minutes_remaining = max(0, (market_close - bar_et).total_seconds() / 60)
+            return minutes_remaining / MARKET_CLOSE_MINUTES
+        else:
+            # Multi-day decay for longer DTE
+            dte_max = int(profile.get("dte_max", 7))
+            if dte_max <= 0:
+                dte_max = 7
+            return min(1.0, dte / dte_max)
+    except Exception:
+        return 1.0
 
 
 def check_exit_conditions(
@@ -54,6 +95,11 @@ def check_exit_conditions(
 
     gain_pct = (current_price - entry_price) / entry_price
 
+    # ── Time-decay factor for TP/SL ──────────────────────────────────────────
+    decay_factor = _compute_decay_factor(current_bar_ts, trade, profile)
+    tp_decay_floor = float(profile.get("tp_decay_floor", 0.3))
+    sl_decay_floor = float(profile.get("sl_decay_floor", 0.5))
+
     # ── EOD force close ──────────────────────────────────────────────────────
     bar_time = current_bar_ts
     if isinstance(bar_time, datetime):
@@ -71,11 +117,11 @@ def check_exit_conditions(
     if elapsed_seconds < hold_min:
         return False, "still_open", current_price
 
-    # ── Stop loss ────────────────────────────────────────────────────────────
+    # ── Stop loss (with time-decay) ──────────────────────────────────────────
     stop_loss_pct = trade.get("stop_loss_pct") or profile.get("stop_loss_pct")
     if stop_loss_pct is not None:
         try:
-            effective_sl = abs(float(stop_loss_pct))
+            effective_sl = abs(float(stop_loss_pct)) * max(sl_decay_floor, decay_factor)
             peak_price = float(trade.get("peak_price") or 0)
             # Update peak price tracking
             if current_price > entry_price and current_price > peak_price:
@@ -100,12 +146,12 @@ def check_exit_conditions(
         except (TypeError, ValueError):
             pass
 
-    # ── Profit target ────────────────────────────────────────────────────────
+    # ── Profit target (with time-decay) ──────────────────────────────────────
     profit_target_pct = profile.get("profit_target_pct")
     effective_target = trade.get("tp2_target_pct") if trade.get("tp2_activated") else profit_target_pct
     if effective_target is not None:
         try:
-            target_val = abs(float(effective_target))
+            target_val = abs(float(effective_target)) * max(tp_decay_floor, decay_factor)
             if gain_pct >= target_val:
                 should_exit = True
                 exit_reason = "profit_target_2" if trade.get("tp2_activated") else "profit_target"

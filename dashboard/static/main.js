@@ -347,6 +347,7 @@ async function refreshAll() {
     fetchSims(),
     fetchChartAndPredictions(),
     fetchRecentTrades(),
+    renderEquityCurve(),
   ]);
   updateRefreshTime();
 }
@@ -1007,6 +1008,7 @@ function buildSeat(sim) {
       <div class="desk-footer">${shortName(sim.signal_mode || '')}</div>
       <div class="archetype-badge archetype-badge-${archetype}">${archetype}</div>
       ${sim.symbols && sim.symbols.length ? `<div class="desk-symbols">${sim.symbols.join(' · ')}</div>` : ''}
+      ${isDead ? `<button class="expel-btn" onclick="event.stopPropagation();expelSim('${sim.sim_id}')" title="Expel this dead sim">🚪 Expel</button>` : ''}
     </div>
   `;
   return seat;
@@ -2748,16 +2750,23 @@ function _updateSymbolCard(sym, candles, preds) {
   }
   chart.updateOptions(opts, false, false);
 
+  const priceEl  = document.getElementById(`sym-price-${sym}`);
+  const changeEl = document.getElementById(`sym-change-${sym}`);
   if (candles.length) {
     const last  = candles[candles.length - 1];
     const first = candles[0];
     const change    = last.c - first.o;
     const changePct = (change / first.o * 100).toFixed(2);
     const sign      = change >= 0 ? '+' : '';
-    const priceEl  = document.getElementById(`sym-price-${sym}`);
-    const changeEl = document.getElementById(`sym-change-${sym}`);
     if (priceEl)  { priceEl.textContent = `$${last.c.toFixed(2)}`; priceEl.style.color = change >= 0 ? 'var(--green)' : 'var(--red)'; }
     if (changeEl) { changeEl.textContent = `${sign}${changePct}%`; changeEl.style.color = change >= 0 ? 'var(--green)' : 'var(--red)'; }
+  } else if (priceEl && priceEl.textContent === '—') {
+    // Fallback: fetch last known close from CSV so price never shows "—"
+    fetch(`/api/chart?symbol=${sym}&bars=1&_t=${Date.now()}`).catch(() => null);
+    // Use a lightweight endpoint to get just the price
+    fetch(`/api/last-price?symbol=${sym}`).then(r => r.json()).then(d => {
+      if (d.price) { priceEl.textContent = `$${parseFloat(d.price).toFixed(2)}`; priceEl.style.color = '#aaa'; }
+    }).catch(() => {});
   }
 
   // Update prediction badge (uses latest prediction)
@@ -3405,8 +3414,16 @@ async function openTradeDetails(simId, tradeId, rowIdx, e) {
   // Switch chalkboard to trade analysis mode
   showTradeChart(simId, tradeId);
 
-  // If on mobile, close drawer so chalkboard is visible
-  if (window.innerWidth < 768) closeDrawer();
+  // On mobile, close drawer and scroll to the chalkboard so analysis is visible
+  if (window.innerWidth < 768) {
+    closeDrawer();
+    // Ensure Charts section is visible and scroll to it
+    const chartsSection = document.getElementById('section-charts');
+    if (chartsSection) {
+      chartsSection.classList.remove('hidden');
+      setTimeout(() => chartsSection.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+    }
+  }
 }
 
 const _isDesktop = () => window.innerWidth >= 769;
@@ -4528,6 +4545,7 @@ async function fetchIntelData() {
     renderIntelBlocked(blocked);
     renderIntelML(ml);
     renderIntelDrift(drift);
+    fetchSystemHealth();
   } catch (e) {
     console.error('Intel fetch error:', e);
     if (loading) loading.textContent = 'Failed to load intelligence data.';
@@ -4802,5 +4820,110 @@ async function submitTradeGrade() {
       </div>`;
   } catch (e) {
     resultDiv.innerHTML = `<div class="grade-report" style="border-color:var(--loss-text)">Network error: ${e.message}</div>`;
+  }
+}
+
+// ─────────────────────────────────────────────── EQUITY CURVE (Aggregate Portfolio)
+let _equityChart = null;
+
+async function renderEquityCurve() {
+  try {
+    const r = await fetch('/api/equity-curve');
+    const data = await r.json();
+
+    const balEl = document.getElementById('equity-balance');
+    if (balEl && data.total_balance) {
+      balEl.textContent = `$${data.total_balance.toLocaleString()}`;
+      balEl.style.color = data.series.length && data.series[data.series.length - 1].pnl >= 0 ? 'var(--win-text)' : 'var(--loss-text)';
+    }
+
+    if (!data.series || !data.series.length) {
+      const wrap = document.getElementById('equity-curve-wrap');
+      if (wrap) wrap.style.display = 'none';
+      return;
+    }
+
+    const series = data.series.map(p => ({ x: new Date(p.date).getTime(), y: p.pnl }));
+    const chartEl = document.getElementById('equity-chart');
+    if (!chartEl) return;
+
+    if (_equityChart) { _equityChart.destroy(); _equityChart = null; }
+
+    _equityChart = new ApexCharts(chartEl, {
+      chart: { type: 'area', height: 170, sparkline: { enabled: false },
+        toolbar: { show: false }, background: 'transparent',
+        fontFamily: 'DM Sans, sans-serif',
+      },
+      series: [{ name: 'Cumulative P&L', data: series }],
+      stroke: { curve: 'smooth', width: 2 },
+      fill: {
+        type: 'gradient',
+        gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.05, stops: [0, 100] },
+      },
+      colors: [series[series.length - 1].y >= 0 ? '#22aa44' : '#cc3333'],
+      xaxis: {
+        type: 'datetime',
+        labels: { style: { colors: '#888', fontSize: '9px' }, datetimeFormatter: { month: 'MMM', day: 'dd MMM' } },
+      },
+      yaxis: {
+        labels: { style: { colors: '#888', fontSize: '10px' }, formatter: v => '$' + v.toFixed(0) },
+      },
+      grid: { borderColor: 'rgba(255,255,255,0.06)', strokeDashArray: 3 },
+      tooltip: { theme: 'dark', x: { format: 'MMM dd' }, y: { formatter: v => '$' + v.toFixed(2) } },
+      annotations: {
+        yaxis: [{ y: 0, borderColor: '#555', strokeDashArray: 4, label: { text: 'Break-even', style: { color: '#888', background: 'transparent', fontSize: '9px' } } }],
+      },
+    });
+    _equityChart.render();
+  } catch (e) {
+    console.warn('Equity curve error:', e);
+  }
+}
+
+// ─────────────────────────────────────────────── EXPEL SIM
+async function expelSim(simId) {
+  if (!confirm(`Expel ${simId}? This will block all trading sessions for this sim.`)) return;
+
+  try {
+    const r = await fetch(`/api/sim/${simId}/expel`, { method: 'POST' });
+    const data = await r.json();
+    if (data.status === 'expelled') {
+      alert(`${simId} has been expelled from class.`);
+      refreshAll();
+    } else {
+      alert(`Failed: ${data.detail || data.message || 'Unknown error'}`);
+    }
+  } catch (e) {
+    alert(`Error: ${e.message}`);
+  }
+}
+
+// ─────────────────────────────────────────────── SYSTEM HEALTH
+async function fetchSystemHealth() {
+  try {
+    const r = await fetch('/api/system-health');
+    const h = await r.json();
+
+    const cpuEl = document.getElementById('hc-cpu');
+    const ramEl = document.getElementById('hc-ram');
+    const dbEl = document.getElementById('hc-db');
+    const walEl = document.getElementById('hc-wal');
+    const simsEl = document.getElementById('hc-sims');
+    const balEl = document.getElementById('hc-balance');
+    const diskEl = document.getElementById('hc-disk');
+    const diskSubEl = document.getElementById('hc-disk-sub');
+
+    if (cpuEl) cpuEl.textContent = h.cpu_pct != null ? `${h.cpu_pct}%` : '—';
+    if (ramEl) ramEl.textContent = h.ram_mb != null ? `${h.ram_mb} MB / ${h.ram_total_mb || '?'} MB (${h.ram_used_pct || '?'}%)` : '—';
+    if (dbEl) dbEl.textContent = h.db_size_mb != null ? `${h.db_size_mb} MB` : '—';
+    if (walEl) walEl.textContent = h.db_wal_mb != null ? `WAL: ${h.db_wal_mb} MB` : '—';
+    if (simsEl) {
+      simsEl.innerHTML = `<span style="color:var(--win-text)">${h.sims_alive || 0}</span> alive · <span style="color:var(--loss-text)">${h.sims_dead || 0}</span> dead`;
+    }
+    if (balEl) balEl.textContent = h.total_balance != null ? `$${h.total_balance.toLocaleString()}` : '—';
+    if (diskEl) diskEl.textContent = h.disk_free_gb != null ? `${h.disk_free_gb} GB free` : '—';
+    if (diskSubEl) diskSubEl.textContent = h.disk_total_gb != null ? `of ${h.disk_total_gb} GB total` : '—';
+  } catch (e) {
+    console.warn('Health fetch error:', e);
   }
 }

@@ -6,7 +6,7 @@
 <title>Trader Sim Classroom</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=20260313d">
+<link rel="stylesheet" href="/static/style.css?v=20260313e">
 <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
 </head>
 <body>
@@ -37,6 +37,7 @@
   <button class="subnav-tab" onclick="navTo('backtest',this)">🔬 Backtest</button>
   <button class="subnav-tab" onclick="navTo('greeks',this)">⚡ Greeks</button>
   <button class="subnav-tab" onclick="navTo('intel',this)">🧠 Intel</button>
+  <button class="subnav-tab" onclick="navTo('grade',this)">📝 Grade</button>
 </nav>
 
 <!-- ══════════════════════════════════════ FRONT WALL: CHALKBOARD -->
@@ -161,6 +162,15 @@
       <div class="shelf-plank"></div>
     </div>
   </div>
+</div>
+
+<!-- ══════════════════════════════════════ EQUITY CURVE -->
+<div class="equity-curve-wrap" id="equity-curve-wrap">
+  <div class="equity-header">
+    <span class="equity-title">📈 CLASSROOM P&L</span>
+    <span class="equity-balance" id="equity-balance">—</span>
+  </div>
+  <div id="equity-chart" style="height:180px"></div>
 </div>
 
 <!-- ══════════════════════════════════════ TEACHER'S DESK -->
@@ -374,6 +384,33 @@
       <div class="greeks-section-title">Feature Drift Report</div>
       <div id="intel-drift-detail"></div>
     </div>
+
+    <!-- System Health -->
+    <div class="greeks-section" id="intel-health-section">
+      <div class="greeks-section-title">🖥️ System Health</div>
+      <div class="greeks-cards-row" id="health-cards">
+        <div class="greeks-card">
+          <div class="greeks-card-label">CPU / RAM</div>
+          <div class="greeks-card-value" id="hc-cpu">—</div>
+          <div class="greeks-card-sub" id="hc-ram">—</div>
+        </div>
+        <div class="greeks-card">
+          <div class="greeks-card-label">Analytics DB</div>
+          <div class="greeks-card-value" id="hc-db">—</div>
+          <div class="greeks-card-sub" id="hc-wal">—</div>
+        </div>
+        <div class="greeks-card">
+          <div class="greeks-card-label">Sims Status</div>
+          <div class="greeks-card-value" id="hc-sims">—</div>
+          <div class="greeks-card-sub" id="hc-balance">—</div>
+        </div>
+        <div class="greeks-card">
+          <div class="greeks-card-label">Disk</div>
+          <div class="greeks-card-value" id="hc-disk">—</div>
+          <div class="greeks-card-sub" id="hc-disk-sub">—</div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -455,6 +492,6 @@
 </div>
 <div class="drawer-backdrop" id="drawer-backdrop" onclick="closeDrawer()"></div>
 
-<script src="/static/main.js?v=20260313d"></script>
+<script src="/static/main.js?v=20260313e"></script>
 </body>
 </html>

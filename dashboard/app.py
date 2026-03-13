@@ -1027,6 +1027,232 @@ async def grade_trade(body: dict):
 
 
 # ---------------------------------------------------------------------------
+# Last Price Fallback
+# ---------------------------------------------------------------------------
+
+@app.get("/api/last-price")
+async def last_price(symbol: str = Query("SPY")):
+    """Return last known close price from CSV — never calls Alpaca."""
+    try:
+        from dashboard.app_helpers3 import _load_symbol_csv_only
+        df = await asyncio.to_thread(_load_symbol_csv_only, symbol.upper())
+        if df is not None and not df.empty:
+            close_col = next((c for c in df.columns if c.lower() == 'close'), None)
+            if close_col:
+                last_close = float(df[close_col].iloc[-1])
+                return {"symbol": symbol.upper(), "price": round(last_close, 2)}
+        return {"symbol": symbol.upper(), "price": None}
+    except Exception as e:
+        return {"symbol": symbol.upper(), "price": None, "error": str(e)}
+
+
+# ---------------------------------------------------------------------------
+# Equity Curve (Aggregate Portfolio)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/equity-curve")
+async def equity_curve():
+    """Aggregate equity curve across all alive sims."""
+    config = _load_config()
+    points = {}  # date_str -> total_balance
+
+    for sid, profile in config.items():
+        if str(sid).startswith("_") or not isinstance(profile, dict):
+            continue
+        if not re.match(r'^SIM\d+$', str(sid).upper()):
+            continue
+        data = _load_sim(sid)
+        if not data:
+            continue
+        if data.get("is_dead"):
+            continue
+
+        balance = data.get("balance", 0)
+        trade_log = data.get("trade_log") or []
+
+        # Walk trade log to build balance-over-time series
+        running = float(profile.get("balance_start", 3000))
+        for t in trade_log:
+            pnl = t.get("realized_pnl_dollars")
+            exit_time = t.get("exit_time", "")
+            if pnl is None or not exit_time:
+                continue
+            day = exit_time[:10]  # YYYY-MM-DD
+            running += float(pnl)
+            points[day] = points.get(day, 0) + float(pnl)
+
+    # Build cumulative series
+    if not points:
+        return {"series": [], "total_balance": 0}
+
+    sorted_days = sorted(points.keys())
+    cumulative = 0
+    series = []
+    for day in sorted_days:
+        cumulative += points[day]
+        series.append({"date": day, "pnl": round(cumulative, 2)})
+
+    # Compute current total balance across alive sims
+    total_balance = 0
+    for sid, profile in config.items():
+        if str(sid).startswith("_") or not isinstance(profile, dict):
+            continue
+        if not re.match(r'^SIM\d+$', str(sid).upper()):
+            continue
+        data = _load_sim(sid)
+        if data and not data.get("is_dead"):
+            total_balance += data.get("balance", 0)
+
+    return {"series": series, "total_balance": round(total_balance, 2)}
+
+
+# ---------------------------------------------------------------------------
+# Expel (Disable) a SIM
+# ---------------------------------------------------------------------------
+
+@app.post("/api/sim/{sim_id}/expel")
+async def expel_sim(sim_id: str):
+    """Disable a dead sim by setting blocked_sessions to all sessions in YAML config."""
+    sim_id = sim_id.upper()
+    data = _load_sim(sim_id)
+    if not data:
+        raise HTTPException(status_code=404, detail=f"{sim_id} not found")
+
+    config = _load_config()
+    profile = config.get(sim_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail=f"{sim_id} not in config")
+
+    # Mark as expelled: add blocked_sessions covering all time slots
+    all_sessions = ["PREMARKET", "OPENING_HOUR", "MIDDAY", "POWER_HOUR", "CLOSING"]
+    profile["blocked_sessions"] = all_sessions
+
+    # Write updated config back to YAML
+    config_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "simulation", "sim_config.yaml"
+    )
+    try:
+        import yaml
+        def _write_config():
+            with open(config_path, "w") as f:
+                yaml.dump(config, f, default_flow_style=False, sort_keys=False)
+        await asyncio.to_thread(_write_config)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to write config: {e}")
+
+    return {
+        "status": "expelled",
+        "sim_id": sim_id,
+        "message": f"{sim_id} has been expelled. All trading sessions are now blocked.",
+    }
+
+
+# ---------------------------------------------------------------------------
+# System Health
+# ---------------------------------------------------------------------------
+
+@app.get("/api/system-health")
+async def system_health():
+    """Return system health metrics: CPU, RAM, DB size, etc."""
+    import shutil
+
+    health = {}
+
+    # CPU & RAM via /proc (no psutil dependency)
+    try:
+        pid = os.getpid()
+        # RSS from /proc/self/status
+        with open(f"/proc/{pid}/status") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    health["ram_mb"] = round(int(line.split()[1]) / 1024, 1)
+                    break
+        # System RAM from /proc/meminfo
+        with open("/proc/meminfo") as f:
+            meminfo = {}
+            for line in f:
+                parts = line.split()
+                if parts[0] in ("MemTotal:", "MemAvailable:"):
+                    meminfo[parts[0]] = int(parts[1])
+            if "MemTotal:" in meminfo:
+                health["ram_total_mb"] = round(meminfo["MemTotal:"] / 1024, 1)
+                if "MemAvailable:" in meminfo:
+                    used = meminfo["MemTotal:"] - meminfo["MemAvailable:"]
+                    health["ram_used_pct"] = round(used / meminfo["MemTotal:"] * 100, 1)
+        # CPU load average (1-min)
+        load1 = os.getloadavg()[0]
+        cpu_count = os.cpu_count() or 1
+        health["cpu_pct"] = round(load1 / cpu_count * 100, 1)
+    except Exception:
+        health["ram_mb"] = None
+        health["cpu_pct"] = None
+
+    # Database size
+    db_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "data", "analytics.db"
+    )
+    try:
+        if os.path.exists(db_path):
+            health["db_size_mb"] = round(os.path.getsize(db_path) / 1024 / 1024, 1)
+        else:
+            health["db_size_mb"] = 0
+    except Exception:
+        health["db_size_mb"] = None
+
+    # SQLite WAL size
+    wal_path = db_path + "-wal"
+    try:
+        if os.path.exists(wal_path):
+            health["db_wal_mb"] = round(os.path.getsize(wal_path) / 1024 / 1024, 1)
+        else:
+            health["db_wal_mb"] = 0
+    except Exception:
+        health["db_wal_mb"] = 0
+
+    # Disk space
+    try:
+        usage = shutil.disk_usage(os.path.dirname(db_path))
+        health["disk_free_gb"] = round(usage.free / 1024 / 1024 / 1024, 1)
+        health["disk_total_gb"] = round(usage.total / 1024 / 1024 / 1024, 1)
+    except Exception:
+        health["disk_free_gb"] = None
+
+    # Alpaca API rate limit heuristic: check last call timestamp
+    try:
+        from core.data_service import _last_alpaca_call_ts
+        import time
+        elapsed = time.time() - _last_alpaca_call_ts if _last_alpaca_call_ts else None
+        health["alpaca_last_call_ago_sec"] = round(elapsed, 1) if elapsed else None
+    except Exception:
+        health["alpaca_last_call_ago_sec"] = None
+
+    # Sim state summary
+    config = _load_config()
+    alive = 0
+    dead = 0
+    total_balance = 0
+    for sid, profile in config.items():
+        if str(sid).startswith("_") or not isinstance(profile, dict):
+            continue
+        if not re.match(r'^SIM\d+$', str(sid).upper()):
+            continue
+        d = _load_sim(sid)
+        if d:
+            if d.get("is_dead"):
+                dead += 1
+            else:
+                alive += 1
+                total_balance += d.get("balance", 0)
+    health["sims_alive"] = alive
+    health["sims_dead"] = dead
+    health["total_balance"] = round(total_balance, 2)
+
+    return health
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 

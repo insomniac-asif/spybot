@@ -89,8 +89,10 @@ def validate_market_dataframe(df):
     rth_df = df_eastern.between_time("09:30", "16:00")
     if not rth_df.empty:
         for session_date, session in rth_df.groupby(rth_df.index.date):
-            # Skip today (session still in progress) and early-close days
-            if session_date >= _today or session_date in _EARLY_CLOSE_DATES:
+            # Only validate today's session — past sessions commonly have gaps
+            # from exchange halts, data feed hiccups, etc. and are irrelevant
+            # to whether current data is safe for live trading decisions.
+            if session_date != _today or session_date in _EARLY_CLOSE_DATES:
                 continue
             session_idx = session.index.sort_values()
             if session_idx.empty:

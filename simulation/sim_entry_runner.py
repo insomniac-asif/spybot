@@ -80,12 +80,37 @@ async def run_sim_entries(
         except Exception:
             pass
 
-    # Shuffle paper sims so no single sim always gets first access to
-    # directional capacity. SIM00 (live) is always evaluated last so that
-    # source sims have been processed before the graduation gate runs.
+    # ── VIX regime overlay: classify VXX level ──────────────────────────────
+    _vix_regime = "NEUTRAL"  # LOW (<15), NEUTRAL (15-25), HIGH (>25)
+    _vxx_df = _sym_df_cache.get("VXX")
+    if _vxx_df is not None and len(_vxx_df) > 0:
+        try:
+            _vxx_close = float(_vxx_df["close"].iloc[-1])
+            if _vxx_close < 15:
+                _vix_regime = "LOW"
+            elif _vxx_close > 25:
+                _vix_regime = "HIGH"
+        except Exception:
+            pass
+
+    # Families boosted by VIX regime
+    _LOW_VIX_FAMILIES = frozenset({"reversal", "fade"})      # MEAN_REVERSION, VWAP_REVERSION, ZSCORE_BOUNCE, etc.
+    _HIGH_VIX_FAMILIES = frozenset({"trend", "breakout"})    # TREND_PULLBACK, BREAKOUT, ORB_BREAKOUT, etc.
+
+    # Shuffle paper sims, then sort VIX-favored families to the front for priority.
+    # SIM00 (live) always evaluated last so source sims process first.
     _all_sim_ids = [sid for sid in _PROFILES if not str(sid).startswith("_")]
     _paper_ids = [sid for sid in _all_sim_ids if sid != "SIM00"]
     random.shuffle(_paper_ids)
+
+    if _vix_regime != "NEUTRAL":
+        _favored = _LOW_VIX_FAMILIES if _vix_regime == "LOW" else _HIGH_VIX_FAMILIES
+        _boosted = [s for s in _paper_ids if get_signal_family(str(_PROFILES[s].get("signal_mode", "")).upper()) in _favored]
+        _rest = [s for s in _paper_ids if s not in set(_boosted)]
+        random.shuffle(_boosted)
+        random.shuffle(_rest)
+        _paper_ids = _boosted + _rest
+
     _ordered_ids = _paper_ids + (["SIM00"] if "SIM00" in _all_sim_ids else [])
 
     for sim_id in _ordered_ids:
@@ -767,5 +792,10 @@ async def run_sim_entries(
                 ))
     except Exception:
         pass
+
+    # Tag all results with VIX regime for analytics
+    for _r in results:
+        if isinstance(_r, dict):
+            _r["vix_regime"] = _vix_regime
 
     return results

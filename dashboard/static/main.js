@@ -2347,17 +2347,47 @@ function _makeApexOptions(sym, height) {
           pan: true,
           reset: true,
         },
-        autoSelected: 'pan',
+        autoSelected: 'zoom',
       },
       zoom: {
-        enabled: false,
+        enabled: true,
         type: 'x',
         autoScaleYaxis: true,
+      },
+      selection: {
+        enabled: true,
+        type: 'x',
       },
       animations: { enabled: false },
       foreColor: '#99bb99',
       sparkline: { enabled: false },
       events: {
+        zoomed: function(chartCtx, { xaxis }) {
+          // When user zooms, rescale Y-axis to visible candle range
+          const data = chartCtx.w.config.series[0]?.data || [];
+          let lo = Infinity, hi = -Infinity;
+          data.forEach(c => {
+            if (c.x >= xaxis.min && c.x <= xaxis.max) {
+              if (c.y[2] < lo) lo = c.y[2];
+              if (c.y[1] > hi) hi = c.y[1];
+            }
+          });
+          if (lo < Infinity && hi > -Infinity) {
+            const pad = Math.max((hi - lo) * 0.08, 0.05);
+            chartCtx.updateOptions({
+              yaxis: {
+                min: Math.floor((lo - pad) * 100) / 100,
+                max: Math.ceil((hi + pad) * 100) / 100,
+                forceNiceScale: false,
+                labels: {
+                  style: { colors: '#88aa88', fontSize: '9px' },
+                  formatter: v => v != null ? v.toFixed(2) : '',
+                },
+                tooltip: { enabled: false },
+              },
+            }, false, false);
+          }
+        },
         updated: function(chartCtx) {
           // Draw prediction lines as SVG after chart renders
           const c = chartCtx;
@@ -2500,7 +2530,7 @@ function focusSymbol(sym) {
     chart: {
       height: Math.max(chartH, 200),
       toolbar: { show: true },
-      zoom: { enabled: true },
+      zoom: { enabled: true, autoScaleYaxis: true },
     },
   }, false, false);
 }
@@ -2525,17 +2555,21 @@ function unfocusSymbol() {
   const titleEl = document.getElementById('chalk-overview-title');
   if (titleEl) titleEl.textContent = 'MARKET OVERVIEW · 1-MIN · TODAY';
   const chartH = window.innerWidth <= 480 ? 140 : window.innerWidth <= 900 ? 170 : 200;
-  if (prev && symbolCharts[prev]) symbolCharts[prev].updateOptions({
-    chart: {
-      height: chartH,
-      toolbar: { show: false },
-      zoom: { enabled: false },
-    },
-  }, false, false);
+  if (prev && symbolCharts[prev]) {
+    symbolCharts[prev].zoomX(undefined, undefined); // reset zoom
+    symbolCharts[prev].updateOptions({
+      chart: {
+        height: chartH,
+        toolbar: { show: false },
+        zoom: { enabled: true, autoScaleYaxis: true },
+      },
+    }, false, false);
+  }
 }
 
 function resetFocusedZoom() {
   if (_focusedSym && symbolCharts[_focusedSym]) {
+    symbolCharts[_focusedSym].zoomX(undefined, undefined);
     symbolCharts[_focusedSym].resetSeries();
   }
 }
@@ -2724,6 +2758,15 @@ function _updateSymbolCard(sym, candles, preds) {
     return { t0, t1: t0 + PRED_DUR_MS, y: parseFloat(priceVal), bull: dir === 'BULLISH' };
   }).filter(Boolean);
 
+  // Compute proper Y-axis range from candle data only (not predictions)
+  let yMin = Infinity, yMax = -Infinity;
+  candleSeries.forEach(c => {
+    if (c.y[2] < yMin) yMin = c.y[2]; // low
+    if (c.y[1] > yMax) yMax = c.y[1]; // high
+  });
+  const yRange = yMax - yMin;
+  const yPad = Math.max(yRange * 0.08, 0.05); // 8% padding, min $0.05
+
   // Use updateOptions to force x-axis range reset
   const opts = {
     series: [
@@ -2746,6 +2789,17 @@ function _updateSymbolCard(sym, candles, preds) {
         style: { colors: '#88aa88', fontSize: '9px' },
         datetimeFormatter: { hour: 'HH:mm', minute: 'HH:mm' },
       },
+    };
+    // Set Y-axis min/max from candle data so predictions don't distort scale
+    opts.yaxis = {
+      min: Math.floor((yMin - yPad) * 100) / 100,
+      max: Math.ceil((yMax + yPad) * 100) / 100,
+      forceNiceScale: false,
+      labels: {
+        style: { colors: '#88aa88', fontSize: '9px' },
+        formatter: v => v != null ? v.toFixed(2) : '',
+      },
+      tooltip: { enabled: false },
     };
   }
   chart.updateOptions(opts, false, false);

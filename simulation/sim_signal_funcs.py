@@ -219,22 +219,29 @@ def _signal_opportunity(df, context: dict | None = None):
         pred_conf = pred.get("confidence") if isinstance(pred, dict) else None
         pred_dir_up = pred_dir.upper() if isinstance(pred_dir, str) else None
 
-        if optimize_ready:
+        # Predictor veto: respect predictor_mode from config
+        _pred_mode = "veto_only"
+        try:
+            import yaml, os
+            _cfg_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "simulation", "sim_config.yaml")
+            with open(_cfg_path, "r") as _f:
+                _raw = yaml.safe_load(_f) or {}
+            _pred_mode = str((_raw.get("_global") or {}).get("predictor_mode", "veto_only")).lower()
+        except Exception:
+            pass
+
+        if _pred_mode != "disabled" and optimize_ready:
+            # Veto if predictor opposes signal direction at >70% confidence
             if pred_dir_up in {"BULLISH", "BEARISH"} and pred_conf is not None:
                 try:
-                    if float(pred_conf) >= 0.6:
+                    if float(pred_conf) > 0.70:
                         if (direction == "BULLISH" and pred_dir_up == "BEARISH") or (
                             direction == "BEARISH" and pred_dir_up == "BULLISH"
                         ):
                             return None, None, None
                 except (TypeError, ValueError):
                     pass
-            if pred_dir_up == "RANGE" and pred_conf is not None:
-                try:
-                    if float(pred_conf) >= 0.6:
-                        return None, None, None
-                except (TypeError, ValueError):
-                    pass
+            # RANGE predictions ignored — let the signal through
 
         horizon_map = {
             "DAYTRADE": {

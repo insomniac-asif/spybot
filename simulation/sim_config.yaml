@@ -1,3 +1,21 @@
+symbol_registry:
+  SPY:
+    data_file: data/spy_1m.csv
+  QQQ:
+    data_file: data/qqq_1m.csv
+  IWM:
+    data_file: data/iwm_1m.csv
+  VXX:
+    data_file: data/vxx_1m.csv
+  TSLA:
+    data_file: data/tsla_1m.csv
+  AAPL:
+    data_file: data/aapl_1m.csv
+  NVDA:
+    data_file: data/nvda_1m.csv
+  MSFT:
+    data_file: data/msft_1m.csv
+
 _global:
   max_directional_sims: 4
   cross_sim_guard_enabled: true
@@ -18,6 +36,7 @@ _global:
   delta_erosion_entry_min: 0.4
   delta_erosion_current_max: 0.2
   enhanced_ml_features: false
+  predictor_mode: veto_only  # "veto_only" = predictor can only block trades, "disabled" = predictor ignored, "full" = legacy dual-alignment
 SIM00:
   name: Vol Expansion Trend (LIVE)
   symbols:
@@ -107,6 +126,10 @@ SIM01:
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
   theta_burn_stop_tighten_pct: 0.5
+  stat_trail_enabled: true
+  stat_trail_level: 0
+  stat_trail_group_size: 10
+  stat_trail_dist_length: 50
 SIM02:
   name: 0DTE Scalp Breakout
   symbols:
@@ -145,6 +168,10 @@ SIM02:
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
   theta_burn_stop_tighten_pct: 0.5
+  stat_trail_enabled: true
+  stat_trail_level: 1
+  stat_trail_group_size: 10
+  stat_trail_dist_length: 50
 SIM03:
   name: Intraday Trend Pullback
   symbols:
@@ -320,6 +347,9 @@ SIM06:
   delta_erosion_exit_enabled: true
   delta_erosion_entry_min: 0.4
   delta_erosion_current_max: 0.2
+  structure_trail_enabled: true
+  structure_trail_pivot_len: 5
+  structure_trail_increment: 0.5
 SIM07:
   name: 14-21 DTE Swing Trend
   symbols:
@@ -363,6 +393,9 @@ SIM07:
   delta_erosion_exit_enabled: true
   delta_erosion_entry_min: 0.4
   delta_erosion_current_max: 0.2
+  structure_trail_enabled: true
+  structure_trail_pivot_len: 7
+  structure_trail_increment: 0.4
 SIM08:
   name: Regime Filter Agent
   symbols:
@@ -532,6 +565,10 @@ SIM11:
   theta_burn_stop_tighten_pct: 0.5
   iv_crush_exit_enabled: true
   iv_crush_vega_multiplier: 2.0
+  stat_trail_enabled: true
+  stat_trail_level: 2
+  stat_trail_group_size: 10
+  stat_trail_dist_length: 100
 SIM12:
   name: Range-Only Mean Reversion
   symbols:
@@ -1600,3 +1637,70 @@ SIM37:
   profit_target_pct: 0.55
   trailing_stop_activate_pct: 0.15
   trailing_stop_trail_pct: 0.08
+SIM38:
+  name: FVG Fill Intraday
+  symbols:
+  - SPY
+  - QQQ
+  - IWM
+  horizon: intraday
+  signal_mode: FVG_FILL
+  execution_mode: paper
+  features_enabled: true
+  fvg_max_age_bars: 50
+  entry_start_time_et: '10:00'
+  dte_min: 0
+  dte_max: 1
+  otm_pct: 0.005
+  hold_min_seconds: 120
+  hold_max_seconds: 3600
+  cutoff_time_et: '15:30'
+  balance_start: 500
+  small_account_mode: true
+  death_threshold: 25
+  max_position_pct: 0.15
+  risk_per_trade_pct: 0.0075
+  daily_loss_limit_pct: 0.03
+  max_open_trades: 2
+  exposure_cap_pct: 0.15
+  max_spread_pct: 0.15
+  entry_slippage: 0.01
+  exit_slippage: 0.01
+  stop_loss_pct: 0.25
+  profit_target_pct: 0.40
+  trailing_stop_activate_pct: 0.10
+  trailing_stop_trail_pct: 0.05
+SIM39:
+  name: FVG Fill Range Only
+  symbols:
+  - SPY
+  - QQQ
+  - IWM
+  horizon: intraday
+  signal_mode: FVG_FILL
+  execution_mode: paper
+  features_enabled: true
+  regime_filter: RANGE_ONLY
+  fvg_max_age_bars: 30
+  entry_start_time_et: '10:00'
+  dte_min: 0
+  dte_max: 1
+  otm_pct: 0.005
+  hold_min_seconds: 120
+  hold_max_seconds: 2700
+  cutoff_time_et: '15:30'
+  balance_start: 500
+  small_account_mode: true
+  death_threshold: 25
+  max_position_pct: 0.15
+  risk_per_trade_pct: 0.0075
+  daily_loss_limit_pct: 0.03
+  max_open_trades: 2
+  exposure_cap_pct: 0.15
+  max_spread_pct: 0.15
+  entry_slippage: 0.01
+  exit_slippage: 0.01
+  stop_loss_pct: 0.20
+  profit_target_pct: 0.35
+  trailing_stop_activate_pct: 0.10
+  trailing_stop_trail_pct: 0.05

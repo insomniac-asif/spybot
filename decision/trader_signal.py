@@ -24,6 +24,19 @@ import pytz
 import uuid
 
 
+def _get_predictor_mode() -> str:
+    """Read predictor_mode from sim_config.yaml _global section."""
+    try:
+        import yaml
+        import os
+        cfg_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "simulation", "sim_config.yaml")
+        with open(cfg_path, "r") as f:
+            raw = yaml.safe_load(f) or {}
+        return str((raw.get("_global") or {}).get("predictor_mode", "veto_only")).lower()
+    except Exception:
+        return "veto_only"
+
+
 def pre_trade_checks(acc, ctx):
 
     decay = edge_decay_status()
@@ -77,45 +90,82 @@ def generate_signal(acc, ctx):
         debug_log("trade_gate_exit", gate="generate_signal", reason=f"VOL_{vol_state}")
         return None
 
+    predictor_mode = _get_predictor_mode()
+
     bias = make_prediction(60, df)
     trigger = make_prediction(15, df)
 
-    if bias is None or trigger is None:
-        ctx.set_block("prediction_none")
-        debug_log("trade_gate_exit", gate="generate_signal", reason="PREDICTION_NONE")
+    # Conviction-derived direction (used in veto_only/disabled modes)
+    score, impulse, follow, conv_direction = calculate_conviction(df)
+
+    if predictor_mode == "disabled":
+        # Predictor disabled: skip all prediction gates, use conviction direction
+        ctx.direction_60m = bias.get("direction") if bias else None
+        ctx.confidence_60m = bias.get("confidence") if bias else None
+        ctx.direction_15m = trigger.get("direction") if trigger else None
+        ctx.confidence_15m = trigger.get("confidence") if trigger else None
+        ctx.dual_alignment = None
+
+        direction = conv_direction.upper() if conv_direction and conv_direction != "neutral" else None
+        confidence = score / 6.0  # normalize conviction score (max 6) to 0-1
+
+    elif predictor_mode == "full":
+        # Legacy mode: require dual-timeframe alignment at ≥55% confidence
+        if bias is None or trigger is None:
+            ctx.set_block("prediction_none")
+            debug_log("trade_gate_exit", gate="generate_signal", reason="PREDICTION_NONE")
+            return None
+
+        _track_confidence_distribution(bias, trigger)
+        ctx.direction_60m = bias.get("direction")
+        ctx.confidence_60m = bias.get("confidence")
+        ctx.direction_15m = trigger.get("direction")
+        ctx.confidence_15m = trigger.get("confidence")
+        ctx.dual_alignment = bias.get("direction") == trigger.get("direction")
+
+        if bias["direction"] != trigger["direction"]:
+            ctx.set_block("direction_mismatch")
+            debug_log("trade_gate_exit", gate="generate_signal", reason="DIRECTION_MISMATCH",
+                      bias=bias["direction"], trigger=trigger["direction"])
+            return None
+
+        if bias["confidence"] < 0.55 or trigger["confidence"] < 0.55:
+            ctx.set_block("confidence")
+            debug_log("trade_gate_exit", gate="generate_signal", reason="CONFIDENCE_BELOW_THRESHOLD",
+                      bias_conf=bias["confidence"], trigger_conf=trigger["confidence"])
+            return None
+
+        direction = bias["direction"]
+        confidence = (bias["confidence"] + trigger["confidence"]) / 2
+
+    else:
+        # veto_only mode (default): predictor can only BLOCK, never originate
+        if bias is not None and trigger is not None:
+            _track_confidence_distribution(bias, trigger)
+        ctx.direction_60m = bias.get("direction") if bias else None
+        ctx.confidence_60m = bias.get("confidence") if bias else None
+        ctx.direction_15m = trigger.get("direction") if trigger else None
+        ctx.confidence_15m = trigger.get("confidence") if trigger else None
+        ctx.dual_alignment = None
+
+        # Direction comes from conviction, not predictor
+        direction = conv_direction.upper() if conv_direction and conv_direction != "neutral" else None
+        confidence = score / 6.0
+
+        # Veto: block if predictor opposes at >70% confidence
+        if direction and bias is not None:
+            pred_dir = (bias.get("direction") or "").upper()
+            pred_conf = bias.get("confidence", 0) or 0
+            if pred_conf > 0.70 and pred_dir in ("BULLISH", "BEARISH") and pred_dir != direction:
+                ctx.set_block("predictor_veto")
+                debug_log("trade_gate_exit", gate="generate_signal", reason="PREDICTOR_VETO",
+                          signal_dir=direction, pred_dir=pred_dir, pred_conf=pred_conf)
+                return None
+
+    if direction is None:
+        ctx.set_block("no_conviction_direction")
+        debug_log("trade_gate_exit", gate="generate_signal", reason="NO_CONVICTION_DIRECTION")
         return None
-
-    _track_confidence_distribution(bias, trigger)
-    ctx.direction_60m = bias.get("direction")
-    ctx.confidence_60m = bias.get("confidence")
-    ctx.direction_15m = trigger.get("direction")
-    ctx.confidence_15m = trigger.get("confidence")
-    ctx.dual_alignment = bias.get("direction") == trigger.get("direction")
-
-    if bias["direction"] != trigger["direction"]:
-        ctx.set_block("direction_mismatch")
-        debug_log(
-            "trade_gate_exit",
-            gate="generate_signal",
-            reason="DIRECTION_MISMATCH",
-            bias=bias["direction"],
-            trigger=trigger["direction"]
-        )
-        return None
-
-    if bias["confidence"] < 0.55 or trigger["confidence"] < 0.55:
-        ctx.set_block("confidence")
-        debug_log(
-            "trade_gate_exit",
-            gate="generate_signal",
-            reason="CONFIDENCE_BELOW_THRESHOLD",
-            bias_conf=bias["confidence"],
-            trigger_conf=trigger["confidence"]
-        )
-        return None
-
-    direction = bias["direction"]
-    confidence = bias["confidence"]
 
     price = get_latest_price()
     if price is None:
@@ -126,7 +176,6 @@ def generate_signal(acc, ctx):
     ctx.spy_price = price
     setup_type = classify_trade(price, direction)
 
-    score, impulse, follow, _ = calculate_conviction(df)
     ctx.conviction_score = score
     ctx.impulse = impulse
     ctx.follow = follow

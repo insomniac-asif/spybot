@@ -14,7 +14,7 @@ from simulation.sim_signals import derive_sim_signal, get_signal_family
 from core.market_clock import get_time_bucket
 from simulation.sim_ml import predict_sim_trade
 from analytics.sim_features import compute_sim_features
-from core.data_service import get_symbol_dataframe
+from core.data_service import get_symbol_dataframe, _load_symbol_registry
 
 # Private helpers extracted to keep this file under 500 lines
 from simulation.sim_entry_helpers import (
@@ -65,10 +65,11 @@ async def run_sim_entries(
         elif _prof.get("symbol"):
             _all_syms.add(str(_prof["symbol"]).upper())
     _sym_df_cache: dict = {}
-    # Pre-seed SPY from the already-fetched df to avoid a redundant call
-    _spy_df = df if df is not None and len(df) > 30 else None
-    if _spy_df is not None:
-        _sym_df_cache["SPY"] = _spy_df
+    # Pre-seed the primary symbol from the already-fetched df to avoid a redundant call
+    if df is not None and len(df) > 30:
+        _primary = getattr(df, "attrs", {}).get("symbol") or next(iter(_load_symbol_registry() or {}), None)
+        if _primary:
+            _sym_df_cache[_primary.upper()] = df
     for _sym in _all_syms:
         if _sym in _sym_df_cache:
             continue
@@ -91,7 +92,7 @@ async def run_sim_entries(
         profile = _PROFILES[sim_id]
         try:
             sim = SimPortfolio(sim_id, profile)
-            sim.load()
+            await asyncio.to_thread(sim.load)
 
             signal_mode = sim.profile.get("signal_mode", "TREND_PULLBACK")
 
@@ -125,8 +126,8 @@ async def run_sim_entries(
             # ── Determine symbol list for this sim ───────────────────────
             _sim_symbols = profile.get("symbols")
             if not _sim_symbols or not isinstance(_sim_symbols, list):
-                _fallback = profile.get("symbol", "SPY")
-                _sim_symbols = [_fallback] if _fallback else ["SPY"]
+                _fallback = profile.get("symbol")
+                _sim_symbols = [_fallback] if _fallback else list((_load_symbol_registry() or {}).keys()) or ["SPY"]
             _sim_symbols = list(_sim_symbols)
 
             # Filter symbols by DTE compatibility
@@ -173,7 +174,7 @@ async def run_sim_entries(
 
                 # Reload sim state so open_trades reflects any entries made
                 # earlier in this symbol loop iteration
-                sim.load()
+                await asyncio.to_thread(sim.load)
                 trade_count = len(sim.trade_log) if isinstance(sim.trade_log, list) else 0
 
                 # ── Load this symbol's df from pre-fetched cache ─────────
@@ -393,6 +394,15 @@ async def run_sim_entries(
                         for _ok, _ov in options_data.items():
                             if isinstance(_ov, (int, float, bool)):
                                 feature_snapshot[f"opts_{_ok}"] = _ov
+                    # FVG features
+                    try:
+                        from analytics.fair_value_gaps import compute_fvg_features
+                        _fvg = compute_fvg_features(sim_df)
+                        for _fk, _fv in _fvg.items():
+                            if isinstance(_fv, (int, float, bool)):
+                                feature_snapshot[_fk] = _fv
+                    except Exception:
+                        pass
                     # Add key levels from correlated symbols (QQQ, IWM)
                     if isinstance(all_structure_data, dict):
                         for _csym in ("QQQ", "IWM"):
@@ -469,6 +479,33 @@ async def run_sim_entries(
                         pass
                     continue
 
+                # ── Predictor veto gate (veto_only mode) ─────────────────
+                _pred_mode = (_GLOBAL_CONFIG.get("predictor_mode") or "veto_only").lower()
+                if _pred_mode == "veto_only" and direction:
+                    try:
+                        from signals.predictor import make_prediction as _mp
+                        _veto_pred = _mp(60, sim_df)
+                        if isinstance(_veto_pred, dict):
+                            _vp_dir = (_veto_pred.get("direction") or "").upper()
+                            _vp_conf = _veto_pred.get("confidence", 0) or 0
+                            _sig_dir = direction.upper()
+                            if (_vp_conf > 0.70
+                                    and _vp_dir in ("BULLISH", "BEARISH")
+                                    and _vp_dir != _sig_dir):
+                                results.append({
+                                    "sim_id": sim_id,
+                                    "status": "skipped",
+                                    "reason": "predictor_veto",
+                                    "direction": direction,
+                                    "pred_direction": _vp_dir,
+                                    "pred_confidence": _vp_conf,
+                                    "entry_context": entry_context,
+                                    "signal_mode": signal_mode,
+                                })
+                                continue
+                    except Exception:
+                        pass  # predictor failure = no veto
+
                 # ── Cross-sim directional exposure guard ─────────────────
                 global_config = _GLOBAL_CONFIG
                 if global_config.get("cross_sim_guard_enabled", False):
@@ -517,6 +554,16 @@ async def run_sim_entries(
                                     "signal_mode": signal_mode,
                                 })
                                 continue
+
+                # ── Confluence scoring ─────────────────────────────────
+                if direction and feature_snapshot is not None:
+                    try:
+                        from analytics.confluence_scorer import compute_confluence_score
+                        conf = compute_confluence_score(sim_df, direction, feature_snapshot)
+                        for k, v in conf.items():
+                            feature_snapshot[k] = v
+                    except Exception:
+                        pass
 
                 # ── 5. ML prediction with real direction/price ─────────
                 from datetime import datetime

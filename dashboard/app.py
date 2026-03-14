@@ -605,6 +605,18 @@ async def get_backtest_optimization(sim_id: str):
         return {"error": f"Optimization failed: {e}"}
 
 
+@app.get("/api/backtest/montecarlo/{sim_id}")
+async def get_backtest_montecarlo(sim_id: str):
+    path = os.path.join(BASE_DIR, "backtest", "results", f"montecarlo_{sim_id.upper()}.json")
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
 # ---------------------------------------------------------------------------
 # Pattern endpoints
 # ---------------------------------------------------------------------------

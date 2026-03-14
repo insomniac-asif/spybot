@@ -1,7 +1,25 @@
 # core/data_service.py
 
 import os
-import fcntl
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
+    import msvcrt
+
+
+def _flock_ex(fd):
+    if fcntl:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+    else:
+        msvcrt.locking(fd.fileno(), msvcrt.LK_LOCK, 1)
+
+
+def _flock_un(fd):
+    if fcntl:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    else:
+        msvcrt.locking(fd.fileno(), msvcrt.LK_UNLOCK, 1)
 import logging
 import pandas as pd
 import pandas_ta as ta
@@ -303,11 +321,11 @@ def get_symbol_dataframe(symbol: str):
                                 _tmp = csv_path + ".tmp"
                                 _lock_fd = open(csv_path + ".lock", "w")
                                 try:
-                                    fcntl.flock(_lock_fd, fcntl.LOCK_EX)
+                                    _flock_ex(_lock_fd)
                                     _to_save.to_csv(_tmp, index=False)
                                     os.replace(_tmp, csv_path)
                                 finally:
-                                    fcntl.flock(_lock_fd, fcntl.LOCK_UN)
+                                    _flock_un(_lock_fd)
                                     _lock_fd.close()
                             except Exception:
                                 pass
@@ -587,11 +605,11 @@ def startup_backfill_all():
             tmp = csv_path + ".tmp"
             lock_fd = open(csv_path + ".lock", "w")
             try:
-                fcntl.flock(lock_fd, fcntl.LOCK_EX)
+                _flock_ex(lock_fd)
                 combined.to_csv(tmp, index=False)
                 os.replace(tmp, csv_path)
             finally:
-                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                _flock_un(lock_fd)
                 lock_fd.close()
             results[sym] = len(fresh_df)
             print(f"  {sym}: +{len(fresh_df)} bars (now {len(combined)} total, last={combined['timestamp'].iloc[-1]})")
@@ -677,11 +695,11 @@ def backfill_symbol_csvs(min_bars: int = 100):
             tmp = csv_path + ".tmp"
             lock_fd = open(csv_path + ".lock", "w")
             try:
-                fcntl.flock(lock_fd, fcntl.LOCK_EX)
+                _flock_ex(lock_fd)
                 result.to_csv(tmp, index=False)
                 os.replace(tmp, csv_path)
             finally:
-                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                _flock_un(lock_fd)
                 lock_fd.close()
             results[sym] = {"bars": len(fresh_df), "date": last_date}
             logging.error("backfill_complete: %s got %d bars for %s (was %d)", sym, len(fresh_df), last_date, len(day_bars))

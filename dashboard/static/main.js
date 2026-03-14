@@ -4083,6 +4083,9 @@ async function renderDrawerBacktestTab(simId) {
 
       <div class="session-label" style="padding:0 0 6px 2px;margin-top:24px;color:#ab47bc">PARAMETER OPTIMIZER</div>
       <div id="bt-param-optimizer" style="font-size:11px;color:#aaa;padding:4px 0">Loading...</div>
+
+      <div class="session-label" style="padding:0 0 6px 2px;margin-top:24px;color:#ff7043">MONTE CARLO SIMULATION</div>
+      <div id="bt-montecarlo" style="font-size:11px;color:#aaa;padding:4px 0">Loading...</div>
     </div>
   `;
 
@@ -4096,6 +4099,7 @@ async function renderDrawerBacktestTab(simId) {
   loadGrowthSection(simId);
   loadPatternsSection(simId);
   loadParamOptimizerSection(simId);
+  loadMonteCarloSection(simId);
 }
 
 /* ── Growth Path Section ── */
@@ -4237,6 +4241,120 @@ async function loadParamOptimizerSection(simId) {
           <thead><tr><th>Rank</th><th>TP</th><th>SL</th><th>Hold</th><th style="text-align:right">OOS Score</th><th style="text-align:right">Consist.</th><th style="text-align:center">Overfit?</th></tr></thead>
           <tbody>${baselineRow}${rows}</tbody>
         </table>` : ''}
+      </div>
+    `;
+  } catch (e) {
+    el.innerHTML = `<span style="color:var(--loss-text)">Failed: ${e.message}</span>`;
+  }
+}
+
+/* -- Monte Carlo Simulation Section -- */
+async function loadMonteCarloSection(simId) {
+  const el = document.getElementById('bt-montecarlo');
+  if (!el) return;
+  try {
+    const res = await fetch(`/api/backtest/montecarlo/${simId}`);
+    const data = await res.json();
+    if (!data || !data.sim_id) {
+      el.innerHTML = '<span style="color:#888">No Monte Carlo data. Run: <code>python -m backtest.monte_carlo --sim ' + simId + '</code></span>';
+      return;
+    }
+
+    const fb = data.final_balance || {};
+    const ml = data.milestones || {};
+    const dd = data.max_drawdown_pct || {};
+    const deaths = data.deaths || {};
+    const model = data.model || {};
+    const hist = data.balance_histogram || [];
+
+    // Build histogram sparkline via inline SVG
+    const maxCount = Math.max(...hist.map(h => h.count), 1);
+    const barW = 100 / Math.max(hist.length, 1);
+    const bars = hist.map((h, i) => {
+      const height = (h.count / maxCount) * 100;
+      const x = i * barW;
+      const isProfit = h.bin_start >= model.start_capital;
+      const color = isProfit ? 'rgba(102,187,106,0.6)' : 'rgba(239,83,80,0.4)';
+      return `<rect x="${x}%" y="${100 - height}%" width="${barW * 0.85}%" height="${height}%" fill="${color}"/>`;
+    }).join('');
+
+    const startLine = hist.length > 0 ? (() => {
+      const startBin = hist.findIndex(h => h.bin_end >= model.start_capital);
+      if (startBin >= 0) {
+        const xPos = startBin * barW;
+        return `<line x1="${xPos}%" y1="0" x2="${xPos}%" y2="100%" stroke="#ffa726" stroke-width="1.5" stroke-dasharray="3,2"/>`;
+      }
+      return '';
+    })() : '';
+
+    // Milestone badges
+    const milestoneHtml = Object.entries(ml).map(([name, m]) => {
+      const prob = m.probability_pct || 0;
+      const days = m.median_days;
+      const color = prob >= 50 ? '#66bb6a' : prob >= 20 ? '#ffa726' : '#ef5350';
+      const dayStr = days ? ` ~${days}d` : '';
+      return `<span style="display:inline-block;margin:2px 6px 2px 0;padding:2px 8px;border-radius:4px;border:1px solid ${color};color:${color};font-size:10px;font-weight:600">${name}: ${prob.toFixed(1)}%${dayStr}</span>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div style="padding:4px 0">
+        <div style="font-size:10px;color:#888;margin-bottom:8px">
+          ${data.n_paths.toLocaleString()} paths x ${data.n_days} days | ${data.backend} | ${data.elapsed_seconds}s |
+          Calibrated from ${data.calibration_trades} trades | WR: ${(model.win_rate * 100).toFixed(1)}%
+        </div>
+
+        <!-- Balance Distribution Histogram -->
+        <div style="margin-bottom:12px">
+          <div style="font-size:10px;color:#aaa;margin-bottom:4px">Final Balance Distribution</div>
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="width:100%;height:60px;background:rgba(255,255,255,0.02);border-radius:4px">
+            ${bars}
+            ${startLine}
+          </svg>
+          <div style="display:flex;justify-content:space-between;font-size:9px;color:#666;margin-top:2px">
+            <span>$${fb.min?.toLocaleString() || 0}</span>
+            <span style="color:#ffa726">Start: $${model.start_capital?.toLocaleString()}</span>
+            <span>$${fb.max?.toLocaleString() || 0}</span>
+          </div>
+        </div>
+
+        <!-- Key Stats Grid -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
+          <div style="background:rgba(255,255,255,0.03);padding:8px;border-radius:4px">
+            <div style="font-size:9px;color:#888">Median End</div>
+            <div style="font-size:16px;font-weight:700;color:${fb.median >= model.start_capital ? '#66bb6a' : '#ef5350'}">$${fb.median?.toLocaleString()}</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.03);padding:8px;border-radius:4px">
+            <div style="font-size:9px;color:#888">P(Profit)</div>
+            <div style="font-size:16px;font-weight:700;color:${data.profitable_pct >= 50 ? '#66bb6a' : '#ef5350'}">${data.profitable_pct?.toFixed(1)}%</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.03);padding:8px;border-radius:4px">
+            <div style="font-size:9px;color:#888">P(Ruin)</div>
+            <div style="font-size:16px;font-weight:700;color:${data.ruin_pct <= 5 ? '#66bb6a' : '#ef5350'}">${data.ruin_pct?.toFixed(1)}%</div>
+          </div>
+        </div>
+
+        <!-- Percentiles -->
+        <div style="display:flex;gap:12px;font-size:10px;margin-bottom:10px;color:#aaa">
+          <span>5th: <b style="color:#ef5350">$${fb.p5?.toLocaleString()}</b></span>
+          <span>25th: <b style="color:#ffa726">$${fb.p25?.toLocaleString()}</b></span>
+          <span>50th: <b style="color:#fff">$${fb.median?.toLocaleString()}</b></span>
+          <span>75th: <b style="color:#42a5f5">$${fb.p75?.toLocaleString()}</b></span>
+          <span>95th: <b style="color:#66bb6a">$${fb.p95?.toLocaleString()}</b></span>
+        </div>
+
+        <!-- Milestones -->
+        <div style="margin-bottom:10px">
+          <div style="font-size:10px;color:#aaa;margin-bottom:4px">Milestone Probabilities</div>
+          ${milestoneHtml}
+        </div>
+
+        <!-- Risk Stats -->
+        <div style="display:flex;gap:16px;font-size:10px;color:#aaa">
+          <span>MaxDD median: <b style="color:#ffa726">${dd.median?.toFixed(1)}%</b></span>
+          <span>MaxDD 95th: <b style="color:#ef5350">${dd.p95?.toFixed(1)}%</b></span>
+          <span>Avg Deaths: <b style="color:${deaths.mean <= 0.5 ? '#66bb6a' : '#ef5350'}">${deaths.mean?.toFixed(1)}</b></span>
+          <span>Zero Deaths: <b>${deaths.zero_deaths_pct?.toFixed(1)}%</b></span>
+        </div>
       </div>
     `;
   } catch (e) {

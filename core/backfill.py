@@ -19,7 +19,11 @@ Usage:
 """
 
 import asyncio
-import fcntl
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
+    import msvcrt
 import logging
 import os
 import time
@@ -127,11 +131,17 @@ def _load_csv(data_file: str) -> Optional[pd.DataFrame]:
         return None
     try:
         with open(data_file, "r", newline="") as f:
-            fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+            if fcntl:
+                fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+            else:
+                msvcrt.locking(f.fileno(), msvcrt.LK_LOCK, 1)
             try:
                 df = pd.read_csv(f)
             finally:
-                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                if fcntl:
+                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                else:
+                    msvcrt.locking(f.fileno(), msvcrt.LK_UNLOCK, 1)
         return df if not df.empty else None
     except Exception:
         return None

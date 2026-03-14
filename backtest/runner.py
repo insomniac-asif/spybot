@@ -90,7 +90,7 @@ def main():
     parser.add_argument("--optimize", action="store_true",
                         help="Run parameter optimizer with walk-forward validation")
     parser.add_argument("--objective", default="growth",
-                        choices=["growth", "winrate", "balanced"],
+                        choices=["growth", "winrate", "balanced", "expectancy"],
                         help="Optimizer objective function (default: growth)")
     args = parser.parse_args()
 
@@ -156,14 +156,18 @@ def main():
                                     objective=args.objective)
             result = optimizer.run()
 
+            verdict = result.get("verdict", "?")
+            verdict_reason = result.get("verdict_reason", "")
             print(f"\n  {'=' * 60}")
-            print(f"  Top 10 Parameter Sets for {sim_id} "
+            print(f"  Verdict: {verdict}")
+            print(f"  {verdict_reason}")
+            print(f"\n  Top 10 Parameter Sets for {sim_id} "
                   f"(objective={args.objective}):")
             print(f"  {'Rank':>4} {'TP':>6} {'SL':>6} {'HoldMax':>8} "
                   f"{'TrainScore':>11} {'TestScore':>10} "
-                  f"{'Consistency':>12} {'Overfit?':>9}")
+                  f"{'Consistency':>12} {'TestTrades':>11} {'TestPnL':>9} {'Overfit?':>9}")
             print(f"  {'-'*4} {'-'*6} {'-'*6} {'-'*8} "
-                  f"{'-'*11} {'-'*10} {'-'*12} {'-'*9}")
+                  f"{'-'*11} {'-'*10} {'-'*12} {'-'*11} {'-'*9} {'-'*9}")
             for entry in result.get("top_10", []):
                 p = entry["params"]
                 ovf = "YES" if entry["overfit_flag"] else "no"
@@ -172,7 +176,23 @@ def main():
                       f"{entry['avg_train_score']:>11.2f} "
                       f"{entry['avg_test_score']:>10.2f} "
                       f"{entry['consistency']*100:>10.0f}% "
+                      f"{entry.get('total_test_trades', '?'):>11} "
+                      f"${entry.get('avg_test_pnl', 0):>7.0f} "
                       f"{ovf:>9}")
+
+            # Print fold details for the top combo
+            top = result.get("top_10", [{}])
+            if top and top[0].get("fold_details"):
+                print(f"\n  Fold details for rank #1:")
+                for fd in top[0]["fold_details"]:
+                    pf_tag = "+" if fd.get("test_profitable") else "-"
+                    print(f"    Fold {fd['fold']}: train={fd['train_trades']} trades "
+                          f"(score {fd['train_score']:.2f}), "
+                          f"test={fd['test_trades']} trades "
+                          f"(score {fd['test_score']:.2f}, "
+                          f"WR {fd.get('test_win_rate', 0)*100:.0f}%, "
+                          f"PnL ${fd.get('test_pnl', 0):.0f}) [{pf_tag}]")
+
             bl = result.get("baseline_params", {})
             print(f"\n  Baseline: TP={bl.get('tp')} SL={bl.get('sl')} "
                   f"HoldMax={bl.get('hold_max')}m")

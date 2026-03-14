@@ -612,26 +612,82 @@ def _wf_daily_sharpe(summary) -> float:
     return (avg / std) * math.sqrt(252) if std > 0 else 0.0
 
 
+def _wf_win_rate(summary) -> float:
+    """Compute overall win rate across all runs."""
+    total_wins = 0
+    total_trades = 0
+    for r in summary.runs:
+        total_wins += _wf_run_attr(r, "wins", 0)
+        total_trades += _wf_run_attr(r, "total_trades", 0)
+    return total_wins / total_trades if total_trades > 0 else 0.0
+
+
+def _wf_avg_win_loss(summary) -> tuple[float, float]:
+    """Compute average win and average loss across all runs."""
+    wins_list = []
+    loss_list = []
+    for r in summary.runs:
+        for t in _wf_run_attr(r, "trades", []):
+            pnl = _wf_get_trade_pnl(t)
+            if pnl > 0:
+                wins_list.append(pnl)
+            elif pnl < 0:
+                loss_list.append(abs(pnl))
+    avg_win = sum(wins_list) / len(wins_list) if wins_list else 0.0
+    avg_loss = sum(loss_list) / len(loss_list) if loss_list else 0.0
+    return avg_win, avg_loss
+
+
+def _wf_total_pnl(summary) -> float:
+    """Compute total PnL across all runs."""
+    return sum(_wf_run_attr(r, "total_pnl", 0) for r in summary.runs) if summary.runs else 0.0
+
+
 def _wf_score(summary, objective: str) -> float:
-    """Score a BacktestSummary for optimizer ranking."""
+    """Score a BacktestSummary for optimizer ranking.
+
+    Objectives:
+    - growth: total_return / max_drawdown (Calmar-like), penalizes blow-ups
+    - expectancy: (win_rate * avg_win - loss_rate * avg_loss) * sqrt(trade_count)
+    - winrate: win_rate * profit_factor (requires PF > 1)
+    - balanced: daily Sharpe ratio (requires >= 30 trades)
+    """
     if not summary.runs:
         return 0.0
     total = _wf_total_trades(summary)
     if total == 0:
         return 0.0
+
     if objective == "growth":
-        end_bal = _wf_run_attr(summary.runs[-1], "final_balance", 500)
-        max_dd = summary.avg_max_drawdown
-        return end_bal / max(max_dd, 0.01)
+        # Use total return across ALL runs, not just the last run's end balance
+        total_pnl = _wf_total_pnl(summary)
+        start_bal = _wf_run_attr(summary.runs[0], "starting_balance", 3000)
+        total_return = total_pnl / start_bal if start_bal > 0 else 0.0
+        max_dd = max(summary.avg_max_drawdown, 0.05)
+        # Negative returns produce negative scores — enables differentiation
+        return total_return / max_dd
+
+    elif objective == "expectancy":
+        if total < 10:
+            return 0.0
+        wr = _wf_win_rate(summary)
+        avg_win, avg_loss = _wf_avg_win_loss(summary)
+        if avg_loss == 0:
+            return avg_win * (total ** 0.5) if avg_win > 0 else 0.0
+        expectancy = (wr * avg_win) - ((1 - wr) * avg_loss)
+        return expectancy * (total ** 0.5)
+
     elif objective == "winrate":
         pf = _wf_profit_factor(summary)
         if pf < 1.0:
             return 0.0
         return summary.avg_win_rate * min(pf, 99.0)
+
     elif objective == "balanced":
         if total < 30:
             return 0.0
         return _wf_daily_sharpe(summary)
+
     return 0.0
 
 
@@ -668,7 +724,9 @@ def _wf_run_fold(work_unit: dict) -> dict:
     ts2 = te2.run()
     test_score = _wf_score(ts2, obj)
     test_trades = _wf_total_trades(ts2)
-    test_pnl = sum(_wf_run_attr(r, "total_pnl", 0) for r in ts2.runs) if ts2.runs else 0
+    test_pnl = _wf_total_pnl(ts2)
+    test_wr = _wf_win_rate(ts2)
+    test_avg_win, test_avg_loss = _wf_avg_win_loss(ts2)
 
     return {
         "combo_idx": work_unit["combo_idx"],
@@ -679,14 +737,20 @@ def _wf_run_fold(work_unit: dict) -> dict:
         "train_trades": train_trades,
         "test_trades": test_trades,
         "test_profitable": test_pnl > 0,
+        "test_pnl": round(test_pnl, 2),
+        "test_win_rate": round(test_wr, 4),
+        "test_avg_win": round(test_avg_win, 2),
+        "test_avg_loss": round(test_avg_loss, 2),
     }
 
 
 class SimOptimizer:
-    """Grid-search parameter optimizer with 3-fold walk-forward validation."""
+    """Grid-search parameter optimizer with walk-forward validation."""
 
     def __init__(self, sim_id: str, start_date: str, end_date: str,
                  objective: str = "growth"):
+        if sim_id.upper() == "SIM00":
+            raise ValueError("SIM00 (live sim) must never be optimized.")
         self.sim_id = sim_id
         self.start_date = start_date
         self.end_date = end_date
@@ -704,29 +768,38 @@ class SimOptimizer:
         raise ValueError(f"Profile {self.sim_id} not found in sim_config.yaml")
 
     def _build_folds(self) -> list[dict]:
+        """Build 3 walk-forward folds with non-overlapping test windows.
+
+        Splits the date range into 5 equal chunks:
+          Fold 1: train [0..2], test [2..3]  — early test
+          Fold 2: train [0..3], test [3..4]  — middle test
+          Fold 3: train [0..4], test [4..5]  — late test (expanding train)
+        """
         start = _dt.strptime(self.start_date, "%Y-%m-%d")
         end = _dt.strptime(self.end_date, "%Y-%m-%d")
         total_days = (end - start).days
-        chunk = timedelta(days=total_days // 6)
+        chunk = timedelta(days=total_days // 5)
+
+        boundaries = [start + i * chunk for i in range(5)] + [end]
 
         return [
             {
-                "train_start": (start).strftime("%Y-%m-%d"),
-                "train_end": (start + 4 * chunk).strftime("%Y-%m-%d"),
-                "test_start": (start + 4 * chunk).strftime("%Y-%m-%d"),
-                "test_end": (start + 6 * chunk).strftime("%Y-%m-%d"),
+                "train_start": boundaries[0].strftime("%Y-%m-%d"),
+                "train_end": boundaries[2].strftime("%Y-%m-%d"),
+                "test_start": boundaries[2].strftime("%Y-%m-%d"),
+                "test_end": boundaries[3].strftime("%Y-%m-%d"),
             },
             {
-                "train_start": (start + chunk).strftime("%Y-%m-%d"),
-                "train_end": (start + 5 * chunk).strftime("%Y-%m-%d"),
-                "test_start": (start + 5 * chunk).strftime("%Y-%m-%d"),
-                "test_end": end.strftime("%Y-%m-%d"),
+                "train_start": boundaries[0].strftime("%Y-%m-%d"),
+                "train_end": boundaries[3].strftime("%Y-%m-%d"),
+                "test_start": boundaries[3].strftime("%Y-%m-%d"),
+                "test_end": boundaries[4].strftime("%Y-%m-%d"),
             },
             {
-                "train_start": (start + 2 * chunk).strftime("%Y-%m-%d"),
-                "train_end": (end - chunk).strftime("%Y-%m-%d"),
-                "test_start": (end - chunk).strftime("%Y-%m-%d"),
-                "test_end": end.strftime("%Y-%m-%d"),
+                "train_start": boundaries[0].strftime("%Y-%m-%d"),
+                "train_end": boundaries[4].strftime("%Y-%m-%d"),
+                "test_start": boundaries[4].strftime("%Y-%m-%d"),
+                "test_end": boundaries[5].strftime("%Y-%m-%d"),
             },
         ]
 
@@ -817,6 +890,8 @@ class SimOptimizer:
                 1 for r in fold_results if r["test_profitable"]
             ) / len(fold_results)
             overfit = avg_test < avg_train * 0.6 if avg_train > 0 else False
+            total_test_trades = sum(r["test_trades"] for r in fold_results)
+            avg_test_pnl = sum(r.get("test_pnl", 0) for r in fold_results) / len(fold_results)
 
             ranked.append({
                 "params": {
@@ -828,6 +903,8 @@ class SimOptimizer:
                 "avg_test_score": round(avg_test, 4),
                 "consistency": round(consistency, 2),
                 "overfit_flag": overfit,
+                "total_test_trades": total_test_trades,
+                "avg_test_pnl": round(avg_test_pnl, 2),
                 "fold_details": sorted(
                     [
                         {
@@ -837,6 +914,8 @@ class SimOptimizer:
                             "train_trades": r["train_trades"],
                             "test_trades": r["test_trades"],
                             "test_profitable": r["test_profitable"],
+                            "test_pnl": r.get("test_pnl", 0),
+                            "test_win_rate": r.get("test_win_rate", 0),
                         }
                         for r in fold_results
                     ],
@@ -849,6 +928,37 @@ class SimOptimizer:
         for i, entry in enumerate(top_10, 1):
             entry["rank"] = i
 
+        # Determine verdict
+        if not ranked:
+            verdict = "NO_RESULTS"
+            verdict_reason = "No parameter combos produced results."
+        elif all(e["avg_test_score"] <= 0 for e in top_10):
+            verdict = "NO_VIABLE_PARAMS"
+            verdict_reason = ("All parameter combos produced negative OOS results. "
+                              "Strategy may lack fundamental edge.")
+        elif all(e["consistency"] == 0 for e in top_10):
+            # Check if all scores are effectively the same
+            scores = [e["avg_test_score"] for e in top_10]
+            score_range = max(scores) - min(scores) if scores else 0
+            if score_range < 0.01:
+                verdict = "NO_DIFFERENTIATION"
+                verdict_reason = ("All combos scored identically OOS. "
+                                  "Parameters not reaching trade logic or test periods too short.")
+            else:
+                verdict = "WEAK"
+                verdict_reason = ("No combo was profitable in any fold, "
+                                  "but scores vary — some params are less bad than others.")
+        else:
+            best = top_10[0]
+            if best["consistency"] >= 0.67:
+                verdict = "VIABLE"
+                verdict_reason = (f"Top combo profitable in {best['consistency']*100:.0f}% "
+                                  f"of folds with avg OOS score {best['avg_test_score']:.2f}.")
+            else:
+                verdict = "MARGINAL"
+                verdict_reason = (f"Some combos show positive OOS scores "
+                                  f"but consistency is low ({best['consistency']*100:.0f}%).")
+
         output = {
             "sim_id": self.sim_id,
             "objective": self.objective,
@@ -856,6 +966,9 @@ class SimOptimizer:
             "baseline_params": baseline,
             "total_combos": len(combos),
             "total_runs": total_units,
+            "verdict": verdict,
+            "verdict_reason": verdict_reason,
+            "folds": folds,
             "top_10": top_10,
         }
 

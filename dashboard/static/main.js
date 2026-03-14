@@ -4203,13 +4203,32 @@ async function loadParamOptimizerSection(simId) {
     }
     const top10 = data.top_10 || [];
     const bl = data.baseline_params || {};
+    const verdict = data.verdict || '';
+    const verdictReason = data.verdict_reason || '';
+    const folds = data.folds || [];
+
+    // Verdict badge
+    const verdictColors = {
+      VIABLE: '#66bb6a', MARGINAL: '#ffa726', WEAK: '#ef5350',
+      NO_VIABLE_PARAMS: '#ef5350', NO_DIFFERENTIATION: '#ef5350', NO_RESULTS: '#888',
+    };
+    const vColor = verdictColors[verdict] || '#888';
+    const verdictHtml = verdict ? `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="display:inline-block;padding:2px 10px;border-radius:4px;border:1px solid ${vColor};color:${vColor};font-size:11px;font-weight:700;letter-spacing:0.5px">${verdict}</span>
+        <span style="font-size:10px;color:#aaa">${verdictReason}</span>
+      </div>` : '';
+
+    // Fold info
+    const foldHtml = folds.length ? `<div style="font-size:9px;color:#666;margin-bottom:6px">${folds.map((f, i) =>
+      `Fold ${i+1}: test ${f.test_start} → ${f.test_end}`).join(' &nbsp;|&nbsp; ')}</div>` : '';
 
     const baselineRow = `<tr style="background:rgba(255,255,255,0.03)">
       <td style="color:#888">base</td>
       <td>${bl.tp || '—'}</td>
       <td>${bl.sl || '—'}</td>
       <td>${bl.hold_max || '—'}m</td>
-      <td colspan="3" style="color:#888;text-align:center">baseline params</td>
+      <td colspan="4" style="color:#888;text-align:center">baseline params</td>
     </tr>`;
 
     const rows = top10.map((r, i) => {
@@ -4220,27 +4239,54 @@ async function loadParamOptimizerSection(simId) {
       const ofColor = r.overfit_flag ? 'color:#ef5350' : 'color:#66bb6a';
       const ofText = r.overfit_flag ? 'YES' : 'no';
       const consColor = r.consistency >= 0.67 ? '#66bb6a' : r.consistency >= 0.33 ? '#ffa726' : '#ef5350';
+      const scoreColor = r.avg_test_score > 0 ? '#66bb6a' : r.avg_test_score < 0 ? '#ef5350' : '#aaa';
+      const pnlColor = (r.avg_test_pnl || 0) > 0 ? '#66bb6a' : (r.avg_test_pnl || 0) < 0 ? '#ef5350' : '#aaa';
       return `<tr style="${rowBg}">
         <td style="${rankColor}">#${r.rank}</td>
         <td>${p.tp}</td>
         <td>${p.sl}</td>
         <td>${p.hold_max}m</td>
-        <td style="text-align:right">${r.avg_test_score.toFixed(1)}</td>
+        <td style="text-align:right;color:${scoreColor}">${r.avg_test_score.toFixed(2)}</td>
         <td style="text-align:right;color:${consColor}">${(r.consistency * 100).toFixed(0)}%</td>
+        <td style="text-align:right;color:${pnlColor}">${r.total_test_trades || '—'} / $${(r.avg_test_pnl || 0).toFixed(0)}</td>
         <td style="text-align:center;color:${ofColor};font-weight:600">${ofText}</td>
       </tr>`;
     }).join('');
+
+    // Fold details for rank #1
+    let foldDetailsHtml = '';
+    if (top10.length && top10[0].fold_details) {
+      const fds = top10[0].fold_details;
+      foldDetailsHtml = `
+        <div style="margin-top:8px;font-size:10px;color:#aaa">
+          <div style="margin-bottom:4px;color:#888">Rank #1 fold breakdown:</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${fds.map(fd => {
+              const pColor = fd.test_profitable ? '#66bb6a' : '#ef5350';
+              const wrColor = fd.test_win_rate >= 0.5 ? '#66bb6a' : fd.test_win_rate >= 0.35 ? '#ffa726' : '#ef5350';
+              return `<div style="background:rgba(255,255,255,0.03);padding:5px 8px;border-radius:4px;border-left:2px solid ${pColor}">
+                <div style="font-size:9px;color:#666">Fold ${fd.fold}</div>
+                <div style="font-size:11px;color:${pColor};font-weight:600">$${(fd.test_pnl || 0).toFixed(0)}</div>
+                <div style="font-size:9px;color:#888">${fd.test_trades} trades <span style="color:${wrColor}">${((fd.test_win_rate || 0) * 100).toFixed(0)}% WR</span></div>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>`;
+    }
 
     const noData = !top10.length ? '<div style="color:#888;padding:8px 0">Optimizer running or no results yet.</div>' : '';
 
     el.innerHTML = `
       <div style="padding:4px 0">
-        <div style="font-size:10px;color:#888;margin-bottom:6px">${data.total_combos || 0} combos | ${data.total_runs || 0} engine runs | objective: ${data.objective || '—'}</div>
+        ${verdictHtml}
+        <div style="font-size:10px;color:#888;margin-bottom:4px">${data.total_combos || 0} combos | ${data.total_runs || 0} engine runs | objective: <b>${data.objective || '—'}</b></div>
+        ${foldHtml}
         ${noData}
         ${top10.length ? `<table class="bt-trades-table">
-          <thead><tr><th>Rank</th><th>TP</th><th>SL</th><th>Hold</th><th style="text-align:right">OOS Score</th><th style="text-align:right">Consist.</th><th style="text-align:center">Overfit?</th></tr></thead>
+          <thead><tr><th>Rank</th><th>TP</th><th>SL</th><th>Hold</th><th style="text-align:right">OOS Score</th><th style="text-align:right">Consist.</th><th style="text-align:right">Trades/PnL</th><th style="text-align:center">Overfit?</th></tr></thead>
           <tbody>${baselineRow}${rows}</tbody>
         </table>` : ''}
+        ${foldDetailsHtml}
       </div>
     `;
   } catch (e) {

@@ -28,8 +28,11 @@ data/trade_features.csv
 data/trade_charts/
 data/trade_narratives/
 data/*_1m.csv
+data/*.lock
 data/candidates/
+data/backups/
 data/strategy_performance.json
+data/strategy_rankings.json
 data/*.pkl
 data/postmortems/
 data/journals/

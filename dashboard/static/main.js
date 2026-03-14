@@ -286,6 +286,8 @@ function navTo(section, btn) {
     });
   }
   const el = document.querySelector(targets[section]);
+  // Auto-expand the Recent Trades panel when Trades tab is clicked
+  if (section === 'trades' && !_rtPanelOpen) toggleRtPanel();
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   document.querySelectorAll('.subnav-tab').forEach(t => t.classList.remove('active'));
   if (btn) btn.classList.add('active');
@@ -943,7 +945,7 @@ function buildSeat(sim) {
   const active      = sim.open_count > 0;
   const mood        = sim.pnl_dollars > 0 ? 'happy' : sim.pnl_dollars < 0 ? 'sad' : 'neutral';
   const colorIdx    = Math.max(0, parseInt(sim.sim_id.replace('SIM', ''), 10) - 1);
-  const archetype   = SIM_STYLES[colorIdx] || 'casual';
+  const archetype   = SIM_STYLES[colorIdx] || SIM_STYLES[colorIdx % SIM_STYLES.length];
   const personality = getPersonality(sim.signal_mode);
   const bubbleText  = buildBubbleText(sim);
 
@@ -1029,7 +1031,7 @@ const HAIR_COLORS = ['#181008','#4a2810','#b08028','#a83818','#585858','#0e0e0e'
 // Desk item variation per student: determines what items appear on their desk
 const DESK_ITEMS = ['papers_mug', 'books_pencil', 'papers_apple', 'notebook_mug', 'books_mug', 'papers_pencil'];
 
-// ─────────────────────────────────────────────── STYLE ARCHETYPES (v3 — 14 styles, 40 sims)
+// ─────────────────────────────────────────────── STYLE ARCHETYPES (v3 — 14 styles, cycles via idx % length)
 const SIM_STYLES = [
   'formal','punk','nerd','pastel','grunge','street',       // SIM00–05
   'emo','cottagecore','jock','artsy','gangster','techy',   // SIM06–11
@@ -1038,6 +1040,7 @@ const SIM_STYLES = [
   'gangster','punk','preppy','grunge','formal','emo',      // SIM24–29
   'artsy','cottagecore','jock','street','nerd','pastel',   // SIM30–35
   'techy','gangster','preppy','punk',                      // SIM36–39
+  'formal','nerd','street','jock',                         // SIM40–43
 ];
 const ARCHETYPE_SHIRTS = {
   punk:        ['#1a1a1a','#141414','#222222'],
@@ -1061,11 +1064,70 @@ const ARCHETYPE_BLANKETS = {
   emo:'#180818', pastel:'#FFB6C1', artsy:'#c87828', techy:'#0a0a1a',
   cottagecore:'#c8b890', preppy:'#7ba0c8',
 };
+const BOTTOM_COLORS = {
+  jeans:   ['#2a3a6a','#1e2e5a','#3a4a7a','#1a2848'],
+  slacks:  ['#2a2a30','#3a3838','#c0b080','#1e1e28'],
+  joggers: ['#4a4a50','#3a3a40','#2a2a3a','#5a5a60'],
+  shorts:  ['#c0b080','#5a6a3a','#3a4a6a','#6a5a4a'],
+  skirt:   ['#3a3a60','#5a2a4a','#2a4a5a','#4a4a2a'],
+  cargo:   ['#5a6a3a','#6a6a4a','#4a5a3a','#7a6a3a'],
+};
+const SHOE_STYLES = {
+  sneakers: ['#e8e8e8','#f0f0f0','#d0d0d0','#ffffff'],
+  boots:    ['#3a2a18','#2a1a10','#4a3a28','#1a1a1a'],
+  dress:    ['#1a1008','#2a1a10','#0e0e0e','#3a2818'],
+  hightops: ['#e03030','#3060c0','#30a060','#f0a020'],
+  slides:   ['#4a4a4a','#2a5a8a','#8a4a2a','#5a5a2a'],
+  heels:    ['#1a1a1a','#c02030','#d4a878','#2a1a2a'],
+};
+const SHOE_ACCENT_MAP = {
+  sneakers: ['#e03030','#3060c0','#30a060','#f0a020','#c030a0'],
+  hightops: ['#ffffff','#e0e0e0','#1a1a1a','#FFD700','#c0c0c0'],
+};
+const BACKPACK_COLORS = [
+  '#3a5a8a','#8a3a3a','#3a8a5a','#8a6a3a','#5a3a8a',
+  '#2a6a6a','#8a4a2a','#4a6a2a','#6a2a4a','#2a4a6a',
+  '#7a5a2a','#3a3a7a','#2a7a5a','#6a3a5a','#2a3a5a',
+  '#6a6a2a','#5a2a6a','#2a5a3a','#8a2a5a','#4a5a2a',
+];
+
+// Deterministic per-sim style — variety for bottoms, shoes, tattoos, tops
+function getSimStyle(idx, isFemale) {
+  const s1 = (idx * 7 + 3) % 20;
+  const s2 = (idx * 13 + 5) % 20;
+  const s3 = (idx * 11 + 7) % 20;
+
+  const topPool = ['button_up','button_up','polo','polo','sweater','sweater',
+    'hoodie','hoodie','blazer','blazer','tanktop','button_up',
+    'polo','sweater','hoodie','blazer','button_up','polo','tanktop','sweater'];
+  const topType = topPool[s1];
+
+  const femaleBottoms = ['jeans','jeans','slacks','joggers','shorts','skirt',
+    'jeans','cargo','slacks','joggers','skirt','jeans',
+    'shorts','slacks','cargo','jeans','joggers','skirt','jeans','slacks'];
+  const maleBottoms = ['jeans','jeans','slacks','joggers','shorts','cargo',
+    'jeans','jeans','slacks','joggers','cargo','jeans',
+    'shorts','slacks','jeans','joggers','cargo','jeans','slacks','shorts'];
+  const bottomType = (isFemale ? femaleBottoms : maleBottoms)[s2];
+
+  const shoePool = ['sneakers','sneakers','boots','dress','hightops','heels',
+    'boots','dress','sneakers','hightops','slides','heels',
+    'boots','heels','sneakers','hightops','sneakers','boots','dress','slides'];
+  let shoeType = shoePool[s3];
+  if (shoeType === 'slides' && !['shorts','skirt'].includes(bottomType)) shoeType = 'sneakers';
+  if (shoeType === 'heels' && !['skirt','slacks','jeans'].includes(bottomType)) shoeType = 'dress';
+
+  // Tattoo: 0=none(40%), 1=light(25%), 2=moderate(20%), 3=heavy(15%)
+  const tPool = [0,0,0,0,0,0,0,0, 1,1,1,1,1, 2,2,2,2, 3,3,3];
+  const tattooLevel = tPool[(idx * 17 + 11) % 20];
+
+  return { topType, bottomType, shoeType, tattooLevel };
+}
 
 function studentSVG(simId, mood, idx, personality = 'casual', active = false) {
-  const archetype = SIM_STYLES[idx] || 'casual';
+  const archetype = SIM_STYLES[idx] || SIM_STYLES[idx % SIM_STYLES.length];
   const skin      = SKIN_TONES[(idx * 3) % SKIN_TONES.length];
-  const arcS      = ARCHETYPE_SHIRTS[archetype] || ARCHETYPE_SHIRTS.casual;
+  const arcS      = ARCHETYPE_SHIRTS[archetype] || ARCHETYPE_SHIRTS.street;
   const shirt     = arcS[idx % arcS.length];
 
   // ── Gender assignment (deterministic by idx)
@@ -1073,6 +1135,7 @@ function studentSVG(simId, mood, idx, personality = 'casual', active = false) {
   // Male at idx 1,5,9,13,18,23,28,33 = SIM02,SIM06,SIM10,SIM14,SIM19,SIM24,SIM29,SIM34 (~22%)
   const MALE_IDXS = new Set([1, 5, 9, 13, 18, 23, 28, 33]);
   const isFemale = !MALE_IDXS.has(idx);
+  const simStyle = getSimStyle(idx, isFemale);
 
   // Hair color — male uses original palette, female gets wider variety
   const FEMALE_HAIR_COLORS = [
@@ -1476,28 +1539,27 @@ function studentSVG(simId, mood, idx, personality = 'casual', active = false) {
 
   // ── Sleeve variation: not everyone wears full sleeves
   // 'full' = default (shirt covers arm x=3..10 and x=37..44 down to y=42)
-  // 'short' = shirt ends at y=36, skin from y=36 to y=45
-  // 'tank'  = shirt ends at y=33, skin from y=33 to y=45 (shoulders only)
+  // Sleeve: 'full' (shirt covers arm), 'short' (skin y=36+), 'tank' (skin y=33+)
   const SLEEVE_MAP = {
     punk: 'short', grunge: 'short', street: 'full', formal: 'full',
-    casual: 'short', gangster: 'tank', nerd: 'full', jock: 'tank',
+    casual: 'short', gangster: 'full', nerd: 'full', jock: 'short',
     emo: 'full', pastel: 'short', artsy: 'short', techy: 'full',
     cottagecore: 'full', preppy: 'full',
   };
-  // Per-sim override: some indices flip sleeve regardless of archetype
-  const SLEEVE_OVERRIDE = { 2: 'short', 7: 'short', 10: 'tank', 15: 'short', 22: 'short', 31: 'tank', 38: 'short' };
-  const sleeveType = SLEEVE_OVERRIDE[idx] || SLEEVE_MAP[archetype] || 'full';
+  const SLEEVE_OVERRIDE = { 2: 'short', 7: 'short', 10: 'short', 15: 'short', 22: 'short', 31: 'short', 38: 'short' };
+  let sleeveType = SLEEVE_OVERRIDE[idx] || SLEEVE_MAP[archetype] || 'full';
+  // topType overrides sleeve length
+  if (simStyle.topType === 'tanktop') sleeveType = 'tank';
+  else if (['sweater','hoodie','blazer'].includes(simStyle.topType)) sleeveType = 'full';
 
   let sleeveOverride = '';
   if (sleeveType === 'short') {
-    // Overwrite lower arm area with skin (shirt stops at y=36)
     sleeveOverride = `
       <rect x="3" y="36" width="8" height="6" fill="${skin}"/>
       <rect x="37" y="36" width="8" height="6" fill="${skin}"/>
       <rect x="3" y="36" width="8" height="1" fill="${shirtDark}" opacity="0.25"/>
       <rect x="37" y="36" width="8" height="1" fill="${shirtDark}" opacity="0.25"/>`;
   } else if (sleeveType === 'tank') {
-    // Overwrite most of arm area with skin (shirt only at shoulder y=31-33)
     sleeveOverride = `
       <rect x="3" y="33" width="8" height="9" fill="${skin}"/>
       <rect x="37" y="33" width="8" height="9" fill="${skin}"/>
@@ -1505,72 +1567,65 @@ function studentSVG(simId, mood, idx, personality = 'casual', active = false) {
       <rect x="37" y="33" width="8" height="1" fill="${shirtDark}" opacity="0.2"/>`;
   }
 
-  // ── Tattoos (~44% of sims — 17 out of 40)
-  // Tattoos appear on exposed arm skin. More visible on short/tank sleeves.
-  const TATTOO_SIMS = new Set([1, 4, 5, 7, 9, 10, 14, 15, 19, 22, 24, 25, 27, 31, 33, 37, 38]);
+  // ── Tattoos — selective distribution with VISIBLE dark ink
+  // Uses actual ink colors (not skin-relative), high opacity, thick fills
+  const inkC1 = '#1a1a2e';  // dark navy ink
+  const inkC2 = '#2d2d2d';  // charcoal ink
+  const inkC3 = '#1a1a1a';  // near-black ink
+  const armTop = sleeveType === 'tank' ? 33 : sleeveType === 'short' ? 36 : 42;
   let tattooSVG = '';
-  if (TATTOO_SIMS.has(idx)) {
-    const tattooC1 = shadeHex(skin, -40);  // dark ink on skin
-    const tattooC2 = shadeHex(skin, -55);  // darker for detail
-    const tattooVariant = idx % 7;
 
-    if (tattooVariant === 0) {
-      // Left arm: small star + dots
-      tattooSVG = `
-        <rect x="5" y="37" width="2" height="1" fill="${tattooC1}" opacity="0.6"/>
-        <rect x="4" y="38" width="4" height="1" fill="${tattooC1}" opacity="0.5"/>
-        <rect x="5" y="39" width="2" height="1" fill="${tattooC1}" opacity="0.6"/>
-        <rect x="6" y="38" width="1" height="1" fill="${tattooC2}" opacity="0.4"/>`;
-    } else if (tattooVariant === 1) {
-      // Right arm: band/bracelet lines
-      tattooSVG = `
-        <rect x="38" y="37" width="6" height="1" fill="${tattooC1}" opacity="0.55"/>
-        <rect x="38" y="39" width="6" height="1" fill="${tattooC1}" opacity="0.55"/>
-        <rect x="39" y="38" width="4" height="1" fill="${tattooC2}" opacity="0.3"/>`;
-    } else if (tattooVariant === 2) {
-      // Both arms: matching small marks
-      tattooSVG = `
-        <rect x="5" y="38" width="3" height="1" fill="${tattooC1}" opacity="0.5"/>
-        <rect x="5" y="40" width="2" height="1" fill="${tattooC1}" opacity="0.4"/>
-        <rect x="39" y="38" width="3" height="1" fill="${tattooC1}" opacity="0.5"/>
-        <rect x="39" y="40" width="2" height="1" fill="${tattooC1}" opacity="0.4"/>`;
-    } else if (tattooVariant === 3) {
-      // Left arm: tribal/geometric pattern
-      tattooSVG = `
-        <rect x="4" y="35" width="1" height="5" fill="${tattooC1}" opacity="0.5"/>
-        <rect x="5" y="36" width="1" height="3" fill="${tattooC2}" opacity="0.45"/>
-        <rect x="6" y="35" width="1" height="5" fill="${tattooC1}" opacity="0.5"/>
-        <rect x="7" y="37" width="1" height="1" fill="${tattooC2}" opacity="0.4"/>
-        <rect x="3" y="37" width="1" height="1" fill="${tattooC2}" opacity="0.4"/>`;
-    } else if (tattooVariant === 4) {
-      // Right arm: snake/vine crawling
-      tattooSVG = `
-        <rect x="39" y="34" width="1" height="2" fill="${tattooC1}" opacity="0.5"/>
-        <rect x="40" y="36" width="1" height="2" fill="${tattooC1}" opacity="0.5"/>
-        <rect x="41" y="38" width="1" height="2" fill="${tattooC1}" opacity="0.45"/>
-        <rect x="42" y="40" width="1" height="2" fill="${tattooC1}" opacity="0.4"/>
-        <rect x="40" y="35" width="2" height="1" fill="${tattooC2}" opacity="0.35"/>`;
-    } else if (tattooVariant === 5) {
-      // Both arms: heavy sleeve tattoos (multiple marks)
-      tattooSVG = `
-        <rect x="4" y="34" width="5" height="1" fill="${tattooC1}" opacity="0.45"/>
-        <rect x="4" y="36" width="4" height="1" fill="${tattooC2}" opacity="0.4"/>
-        <rect x="5" y="38" width="3" height="1" fill="${tattooC1}" opacity="0.5"/>
-        <rect x="4" y="40" width="5" height="1" fill="${tattooC1}" opacity="0.45"/>
-        <rect x="39" y="34" width="5" height="1" fill="${tattooC1}" opacity="0.45"/>
-        <rect x="39" y="36" width="4" height="1" fill="${tattooC2}" opacity="0.4"/>
-        <rect x="40" y="38" width="3" height="1" fill="${tattooC1}" opacity="0.5"/>
-        <rect x="39" y="40" width="5" height="1" fill="${tattooC1}" opacity="0.45"/>`;
-    } else {
-      // Left arm: small heart/diamond shape
-      tattooSVG = `
-        <rect x="5" y="37" width="1" height="1" fill="${tattooC1}" opacity="0.55"/>
-        <rect x="7" y="37" width="1" height="1" fill="${tattooC1}" opacity="0.55"/>
-        <rect x="4" y="38" width="5" height="1" fill="${tattooC1}" opacity="0.5"/>
-        <rect x="5" y="39" width="3" height="1" fill="${tattooC1}" opacity="0.5"/>
-        <rect x="6" y="40" width="1" height="1" fill="${tattooC2}" opacity="0.45"/>`;
+  if (simStyle.tattooLevel === 1) {
+    // Light — 1-2 small wrist/hand pieces
+    const v = idx % 4;
+    if (v === 0) tattooSVG = `
+        <rect x="4" y="43" width="4" height="2" fill="${inkC1}" opacity="0.75"/>`;
+    else if (v === 1) tattooSVG = `
+        <rect x="40" y="43" width="4" height="2" fill="${inkC2}" opacity="0.7"/>
+        <rect x="41" y="42" width="2" height="1" fill="${inkC2}" opacity="0.5"/>`;
+    else if (v === 2) tattooSVG = `
+        <rect x="4" y="42" width="5" height="2" fill="${inkC1}" opacity="0.7"/>`;
+    else tattooSVG = `
+        <rect x="39" y="42" width="5" height="2" fill="${inkC2}" opacity="0.7"/>`;
+  } else if (simStyle.tattooLevel === 2) {
+    // Moderate — forearm pieces + wrist bands
+    const v = idx % 3;
+    let armTat = '';
+    if (armTop <= 37) {
+      armTat = v === 0
+        ? `<rect x="3" y="${armTop+1}" width="6" height="2" fill="${inkC1}" opacity="0.7"/>
+           <rect x="4" y="${armTop+3}" width="4" height="2" fill="${inkC2}" opacity="0.6"/>`
+        : v === 1
+        ? `<rect x="38" y="${armTop+1}" width="6" height="2" fill="${inkC2}" opacity="0.65"/>
+           <rect x="39" y="${armTop+3}" width="4" height="2" fill="${inkC1}" opacity="0.6"/>`
+        : `<rect x="3" y="${armTop+1}" width="6" height="2" fill="${inkC1}" opacity="0.65"/>
+           <rect x="38" y="${armTop+1}" width="6" height="2" fill="${inkC2}" opacity="0.65"/>`;
     }
+    tattooSVG = armTat + `
+      <rect x="4" y="43" width="5" height="2" fill="${inkC1}" opacity="0.75"/>
+      <rect x="40" y="43" width="4" height="2" fill="${inkC2}" opacity="0.7"/>`;
+  } else if (simStyle.tattooLevel === 3) {
+    // Heavy — sleeve overlay + neck tattoo + heavy wrist ink
+    const armH = 42 - armTop;
+    let sleeveTat = '';
+    if (armH > 2) {
+      sleeveTat = `
+      <rect x="3" y="${armTop}" width="8" height="${armH}" fill="${inkC3}" opacity="0.22"/>
+      <rect x="37" y="${armTop}" width="8" height="${armH}" fill="${inkC3}" opacity="0.22"/>
+      <rect x="4" y="${armTop+1}" width="5" height="2" fill="${inkC1}" opacity="0.7"/>
+      <rect x="3" y="${armTop+3}" width="7" height="2" fill="${inkC2}" opacity="0.65"/>
+      <rect x="38" y="${armTop+1}" width="5" height="2" fill="${inkC2}" opacity="0.7"/>
+      <rect x="37" y="${armTop+3}" width="7" height="2" fill="${inkC1}" opacity="0.65"/>`;
+    }
+    tattooSVG = sleeveTat + `
+      <rect x="3" y="42" width="7" height="2" fill="${inkC1}" opacity="0.8"/>
+      <rect x="38" y="42" width="7" height="2" fill="${inkC1}" opacity="0.8"/>
+      <rect x="4" y="44" width="3" height="1" fill="${inkC1}" opacity="0.65"/>
+      <rect x="41" y="44" width="3" height="1" fill="${inkC1}" opacity="0.65"/>
+      <rect x="20" y="27" width="8" height="2" fill="${inkC2}" opacity="0.5"/>
+      <rect x="22" y="26" width="4" height="1" fill="${inkC1}" opacity="0.4"/>`;
   }
+  // tattooLevel === 0: no tattoos (clean skin, ~40% of sims)
 
   // ── Archetype hat / hair accessory (rendered over hair in head section)
   let hatSVG = '';
@@ -2024,7 +2079,7 @@ function studentSVG(simId, mood, idx, personality = 'casual', active = false) {
     cottagecore: ['#90A878','#a0b888'],
     preppy:      ['#D0B888','#e0c898'],
   };
-  const dPair       = DESK_COLORS[archetype] || DESK_COLORS.casual;
+  const dPair       = DESK_COLORS[archetype] || DESK_COLORS.street;
   const deskSurface  = dPair[0];
   const deskSurface2 = dPair[1];
   const deskGlow     = archetype === 'techy'
@@ -2035,8 +2090,161 @@ function studentSVG(simId, mood, idx, personality = 'casual', active = false) {
     ? `<rect x="0" y="50" width="48" height="1" fill="#ff80a8" opacity="0.12"/>`
     : '';
 
+  // ── Per-sim bottom, shoe, backpack, collar
+  const bottomColor = (BOTTOM_COLORS[simStyle.bottomType] || BOTTOM_COLORS.jeans)[(idx * 3) % 4];
+  const bottomHL    = shadeHex(bottomColor, +15);
+  const bottomDark  = shadeHex(bottomColor, -12);
+  const sc          = (SHOE_STYLES[simStyle.shoeType] || SHOE_STYLES.sneakers)[(idx * 5) % 4];
+  const scHL        = shadeHex(sc, +20);
+  const scDark      = shadeHex(sc, -15);
+  const shoeAccent  = (SHOE_ACCENT_MAP[simStyle.shoeType] || [])[idx % 5] || scHL;
+  const bpColor     = BACKPACK_COLORS[idx % BACKPACK_COLORS.length];
+  const bpDark      = shadeHex(bpColor, -20);
+  const bpLight     = shadeHex(bpColor, +25);
+  const bpSide      = idx % 2 === 0;
+  const showCollar  = ['button_up','polo','blazer'].includes(simStyle.topType);
+  const collarC     = archetype === 'punk' ? '#c0c0c0' : archetype === 'emo' ? '#2a2a2a' : '#f0efe8';
+
+  // ── Build legs SVG based on bottom type
+  let legsSVG = '';
+  if (simStyle.bottomType === 'jeans') {
+    legsSVG = `
+      <rect x="15" y="56" width="7" height="12" fill="${bottomColor}"/>
+      <rect x="26" y="56" width="7" height="12" fill="${bottomColor}"/>
+      <rect x="16" y="57" width="2" height="10" fill="${bottomHL}" opacity="0.2"/>
+      <rect x="27" y="57" width="2" height="10" fill="${bottomHL}" opacity="0.2"/>
+      <rect x="15" y="65" width="7" height="1" fill="${bottomDark}" opacity="0.15"/>
+      <rect x="26" y="65" width="7" height="1" fill="${bottomDark}" opacity="0.15"/>`;
+  } else if (simStyle.bottomType === 'slacks') {
+    legsSVG = `
+      <rect x="16" y="56" width="6" height="12" fill="${bottomColor}"/>
+      <rect x="26" y="56" width="6" height="12" fill="${bottomColor}"/>
+      <rect x="17" y="57" width="1" height="10" fill="${bottomHL}" opacity="0.15"/>
+      <rect x="27" y="57" width="1" height="10" fill="${bottomHL}" opacity="0.15"/>
+      <rect x="18" y="56" width="1" height="12" fill="${bottomDark}" opacity="0.1"/>
+      <rect x="28" y="56" width="1" height="12" fill="${bottomDark}" opacity="0.1"/>`;
+  } else if (simStyle.bottomType === 'joggers') {
+    legsSVG = `
+      <rect x="15" y="56" width="7" height="10" fill="${bottomColor}"/>
+      <rect x="26" y="56" width="7" height="10" fill="${bottomColor}"/>
+      <rect x="16" y="66" width="5" height="2" fill="${bottomDark}"/>
+      <rect x="27" y="66" width="5" height="2" fill="${bottomDark}"/>
+      <rect x="16" y="66" width="5" height="1" fill="${bottomHL}" opacity="0.3"/>
+      <rect x="27" y="66" width="5" height="1" fill="${bottomHL}" opacity="0.3"/>`;
+  } else if (simStyle.bottomType === 'shorts') {
+    legsSVG = `
+      <rect x="15" y="56" width="7" height="5" fill="${bottomColor}"/>
+      <rect x="26" y="56" width="7" height="5" fill="${bottomColor}"/>
+      <rect x="15" y="60" width="7" height="1" fill="${bottomDark}" opacity="0.2"/>
+      <rect x="26" y="60" width="7" height="1" fill="${bottomDark}" opacity="0.2"/>
+      <rect x="17" y="61" width="5" height="7" fill="${skin}"/>
+      <rect x="27" y="61" width="5" height="7" fill="${skin}"/>`;
+  } else if (simStyle.bottomType === 'skirt') {
+    // Tights: deterministic ~1/3 each of bare, sheer, opaque
+    const tightsRoll = (idx * 13 + 5) % 3; // 0 = bare; 1 = sheer; 2 = opaque
+    const legColor = tightsRoll === 2 ? '#1a1a2e'
+                   : tightsRoll === 1 ? shadeHex(skin, -25)
+                   : skin;
+    legsSVG = `
+      <rect x="14" y="56" width="20" height="5" fill="${bottomColor}"/>
+      <rect x="14" y="56" width="20" height="1" fill="${bottomHL}" opacity="0.3"/>
+      <rect x="14" y="60" width="20" height="1" fill="${bottomDark}" opacity="0.2"/>
+      <rect x="17" y="61" width="5" height="7" fill="${legColor}"/>
+      <rect x="27" y="61" width="5" height="7" fill="${legColor}"/>`;
+  } else if (simStyle.bottomType === 'cargo') {
+    legsSVG = `
+      <rect x="14" y="56" width="8" height="12" fill="${bottomColor}"/>
+      <rect x="26" y="56" width="8" height="12" fill="${bottomColor}"/>
+      <rect x="15" y="57" width="2" height="10" fill="${bottomHL}" opacity="0.15"/>
+      <rect x="27" y="57" width="2" height="10" fill="${bottomHL}" opacity="0.15"/>
+      <rect x="15" y="60" width="4" height="3" fill="${bottomDark}" opacity="0.35"/>
+      <rect x="29" y="60" width="4" height="3" fill="${bottomDark}" opacity="0.35"/>
+      <rect x="15" y="60" width="4" height="1" fill="${bottomHL}" opacity="0.2"/>
+      <rect x="29" y="60" width="4" height="1" fill="${bottomHL}" opacity="0.2"/>`;
+  }
+
+  // ── Build shoes SVG based on shoe type
+  let shoesSVG = '';
+  if (simStyle.shoeType === 'sneakers') {
+    shoesSVG = `
+      <rect x="14" y="68" width="8" height="4" rx="1" fill="${sc}"/>
+      <rect x="26" y="68" width="8" height="4" rx="1" fill="${sc}"/>
+      <rect x="14" y="68" width="8" height="1" fill="${scHL}"/>
+      <rect x="26" y="68" width="8" height="1" fill="${scHL}"/>
+      <rect x="14" y="70" width="8" height="1" fill="${shoeAccent}" opacity="0.7"/>
+      <rect x="26" y="70" width="8" height="1" fill="${shoeAccent}" opacity="0.7"/>
+      <rect x="14" y="71" width="8" height="1" fill="rgba(0,0,0,0.2)"/>
+      <rect x="26" y="71" width="8" height="1" fill="rgba(0,0,0,0.2)"/>`;
+  } else if (simStyle.shoeType === 'boots') {
+    shoesSVG = `
+      <rect x="14" y="66" width="8" height="6" rx="1" fill="${sc}"/>
+      <rect x="26" y="66" width="8" height="6" rx="1" fill="${sc}"/>
+      <rect x="14" y="66" width="8" height="1" fill="${scHL}"/>
+      <rect x="26" y="66" width="8" height="1" fill="${scHL}"/>
+      <rect x="14" y="68" width="8" height="1" fill="${scDark}" opacity="0.3"/>
+      <rect x="26" y="68" width="8" height="1" fill="${scDark}" opacity="0.3"/>
+      <rect x="14" y="71" width="8" height="1" fill="rgba(0,0,0,0.3)"/>
+      <rect x="26" y="71" width="8" height="1" fill="rgba(0,0,0,0.3)"/>`;
+  } else if (simStyle.shoeType === 'dress') {
+    shoesSVG = `
+      <rect x="15" y="68" width="7" height="4" fill="${sc}"/>
+      <rect x="27" y="68" width="7" height="4" fill="${sc}"/>
+      <rect x="15" y="68" width="7" height="1" fill="${scHL}"/>
+      <rect x="27" y="68" width="7" height="1" fill="${scHL}"/>
+      <rect x="15" y="71" width="7" height="1" fill="rgba(0,0,0,0.2)"/>
+      <rect x="27" y="71" width="7" height="1" fill="rgba(0,0,0,0.2)"/>`;
+  } else if (simStyle.shoeType === 'hightops') {
+    shoesSVG = `
+      <rect x="14" y="66" width="8" height="6" rx="1" fill="${sc}"/>
+      <rect x="26" y="66" width="8" height="6" rx="1" fill="${sc}"/>
+      <rect x="14" y="66" width="8" height="1" fill="${scHL}"/>
+      <rect x="26" y="66" width="8" height="1" fill="${scHL}"/>
+      <rect x="17" y="67" width="2" height="1" fill="#ffffff" opacity="0.6"/>
+      <rect x="29" y="67" width="2" height="1" fill="#ffffff" opacity="0.6"/>
+      <rect x="14" y="70" width="8" height="1" fill="${shoeAccent}" opacity="0.5"/>
+      <rect x="26" y="70" width="8" height="1" fill="${shoeAccent}" opacity="0.5"/>
+      <rect x="14" y="71" width="8" height="1" fill="rgba(0,0,0,0.25)"/>
+      <rect x="26" y="71" width="8" height="1" fill="rgba(0,0,0,0.25)"/>`;
+  } else if (simStyle.shoeType === 'heels') {
+    // Heels: elevated back, narrow pointed toe
+    shoesSVG = `
+      <rect x="15" y="66" width="3" height="6" fill="${sc}"/>
+      <rect x="27" y="66" width="3" height="6" fill="${sc}"/>
+      <rect x="15" y="66" width="3" height="1" fill="${scHL}"/>
+      <rect x="27" y="66" width="3" height="1" fill="${scHL}"/>
+      <rect x="18" y="68" width="5" height="4" fill="${sc}"/>
+      <rect x="30" y="68" width="5" height="4" fill="${sc}"/>
+      <rect x="18" y="68" width="5" height="1" fill="${scHL}" opacity="0.5"/>
+      <rect x="30" y="68" width="5" height="1" fill="${scHL}" opacity="0.5"/>
+      <rect x="15" y="71" width="8" height="1" fill="rgba(0,0,0,0.25)"/>
+      <rect x="27" y="71" width="8" height="1" fill="rgba(0,0,0,0.25)"/>`;
+  } else {
+    // slides
+    shoesSVG = `
+      <rect x="14" y="69" width="8" height="3" rx="1" fill="${sc}"/>
+      <rect x="26" y="69" width="8" height="3" rx="1" fill="${sc}"/>
+      <rect x="14" y="69" width="8" height="1" fill="${scHL}"/>
+      <rect x="26" y="69" width="8" height="1" fill="${scHL}"/>
+      <rect x="15" y="70" width="6" height="2" fill="${skin}" opacity="0.6"/>
+      <rect x="27" y="70" width="6" height="2" fill="${skin}" opacity="0.6"/>`;
+  }
+
+  // ── Collar SVG based on top type
+  let collarSVG = '';
+  if (['button_up','blazer'].includes(simStyle.topType)) {
+    collarSVG = `
+      <rect x="17" y="30" width="4" height="2" fill="${collarC}" opacity="0.8"/>
+      <rect x="27" y="30" width="4" height="2" fill="${collarC}" opacity="0.8"/>
+      <rect x="18" y="30" width="3" height="1" fill="rgba(255,255,255,0.3)"/>
+      <rect x="27" y="30" width="3" height="1" fill="rgba(255,255,255,0.3)"/>`;
+  } else if (simStyle.topType === 'polo') {
+    collarSVG = `
+      <rect x="18" y="29" width="3" height="2" fill="${collarC}" opacity="0.7"/>
+      <rect x="27" y="29" width="3" height="2" fill="${collarC}" opacity="0.7"/>`;
+  }
+
   // Build the full character SVG
-  return `<svg viewBox="0 0 48 64" width="72" height="96" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
+  return `<svg viewBox="0 0 48 76" width="72" height="114" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">
 
   <!-- ── CHAIR ── -->
   <rect x="8" y="28" width="32" height="5" fill="#5a2e0c"/>
@@ -2048,8 +2256,10 @@ function studentSVG(simId, mood, idx, personality = 'casual', active = false) {
   <!-- Shirt -->
   <rect x="10" y="30" width="28" height="16" fill="${shirt}"/>
   <rect x="10" y="30" width="28" height="2" fill="${shirtDark}"/>
-  <!-- Collar -->
+  <!-- Collar (skin V-neck) -->
   <rect x="20" y="30" width="8" height="3" fill="${skin}" opacity="0.6"/>
+  <!-- Collar (conditional on top type) -->
+  ${collarSVG}
   <!-- Shirt seam -->
   <rect x="23" y="33" width="2" height="10" fill="${shirtDark}" opacity="0.15"/>
   <!-- Left arm -->
@@ -2089,9 +2299,39 @@ function studentSVG(simId, mood, idx, personality = 'casual', active = false) {
   <rect x="0" y="55" width="48" height="1" fill="rgba(0,0,0,0.25)"/>
   ${deskGlow}
   <!-- Desk legs (pixel style) -->
-  <rect x="2" y="56" width="4" height="6" fill="#5a3010"/>
-  <rect x="42" y="56" width="4" height="6" fill="#5a3010"/>
+  <rect x="2" y="56" width="4" height="8" fill="#5a3010"/>
+  <rect x="42" y="56" width="4" height="8" fill="#5a3010"/>
   <rect x="2" y="56" width="4" height="1" fill="#6a4018"/>
+  <rect x="42" y="56" width="4" height="1" fill="#6a4018"/>
+
+  <!-- ── CHAIR LEGS (below desk) ── -->
+  <rect x="10" y="56" width="3" height="14" fill="#5a2e0c"/>
+  <rect x="35" y="56" width="3" height="14" fill="#5a2e0c"/>
+  <rect x="10" y="56" width="3" height="1" fill="#6a3e18"/>
+  <rect x="35" y="56" width="3" height="1" fill="#6a3e18"/>
+  <!-- Chair crossbar -->
+  <rect x="10" y="64" width="28" height="2" fill="#4a2008"/>
+  <rect x="10" y="64" width="28" height="1" fill="#5a3018"/>
+
+  <!-- ── CHARACTER LEGS (type-varied) ── -->
+  ${legsSVG}
+  <!-- ── SHOES (type-varied) ── -->
+  ${shoesSVG}
+
+  <!-- ── BACKPACK (leaning against desk side) ── -->
+  ${bpSide ? `
+  <rect x="-1" y="46" width="8" height="16" rx="2" fill="${bpColor}"/>
+  <rect x="0"  y="47" width="6" height="14" rx="1" fill="${bpLight}" opacity="0.25"/>
+  <rect x="0"  y="44" width="2" height="4" fill="${bpDark}"/>
+  <rect x="5"  y="44" width="2" height="4" fill="${bpDark}"/>
+  <rect x="2"  y="52" width="4" height="3" fill="${bpDark}" opacity="0.4"/>
+  ` : `
+  <rect x="41" y="46" width="8" height="16" rx="2" fill="${bpColor}"/>
+  <rect x="42" y="47" width="6" height="14" rx="1" fill="${bpLight}" opacity="0.25"/>
+  <rect x="41" y="44" width="2" height="4" fill="${bpDark}"/>
+  <rect x="46" y="44" width="2" height="4" fill="${bpDark}"/>
+  <rect x="43" y="52" width="4" height="3" fill="${bpDark}" opacity="0.4"/>
+  `}
 
   <!-- ── LAPTOP ── -->
   <rect x="14" y="44" width="20" height="6" fill="#2a2838"/>
@@ -2148,7 +2388,7 @@ function studentSVG(simId, mood, idx, personality = 'casual', active = false) {
   ${arcJewelry}
 
   <!-- ── SHADOW ── -->
-  <ellipse cx="24" cy="62" rx="18" ry="2" fill="rgba(0,0,0,0.12)"/>
+  <ellipse cx="24" cy="74" rx="20" ry="2" fill="rgba(0,0,0,0.12)"/>
 </svg>`;
 }
 
@@ -2169,7 +2409,7 @@ function sleepingSVG(idx) {
     Math.min(255, Math.max(0, parseInt(h, 16) + d)).toString(16).padStart(2, '0'));
   const hairDark    = shadeHex(hair, -28);
   const hairLight   = shadeHex(hair, +22);
-  const sleepArch   = SIM_STYLES[idx] || 'casual';
+  const sleepArch   = SIM_STYLES[idx] || SIM_STYLES[idx % SIM_STYLES.length];
   const blanketBase = ARCHETYPE_BLANKETS[sleepArch] || shirt;
   const blanketFold = shadeHex(blanketBase, +28);  // lighter fold at top
   const blanketDark = shadeHex(blanketBase, -40);  // stripe lines
@@ -4706,9 +4946,18 @@ function renderIntelBlocked(data) {
       : 'hm-none';
     const fwd5 = r.avg_fwd_5m != null ? (r.avg_fwd_5m >= 0 ? '+' : '') + r.avg_fwd_5m.toFixed(4) : '—';
     const fwd15 = r.avg_fwd_15m != null ? (r.avg_fwd_15m >= 0 ? '+' : '') + r.avg_fwd_15m.toFixed(4) : '—';
+    // Clean up raw JSON in block reasons (e.g. broker_order_rejected:{"code":...})
+    let reasonLabel = r.reason;
+    if (reasonLabel.includes(':{')) {
+      try {
+        const [prefix, jsonStr] = reasonLabel.split(/:\{/, 2);
+        const obj = JSON.parse('{' + jsonStr);
+        reasonLabel = prefix + ': ' + (obj.message || JSON.stringify(obj));
+      } catch { reasonLabel = reasonLabel.split(':{')[0]; }
+    }
     return `
       <tr>
-        <td style="font-weight:600;text-align:left">${r.reason}</td>
+        <td style="font-weight:600;text-align:left">${reasonLabel}</td>
         <td>${r.count}</td>
         <td class="${winClass}">${r.would_win_pct != null ? r.would_win_pct + '%' : '—'}</td>
         <td style="color:${r.avg_fwd_5m >= 0 ? '#2a7a2a' : '#aa2222'}">${fwd5}</td>
@@ -4736,9 +4985,12 @@ function renderIntelML(ml) {
 
   container.innerHTML = `
     <div class="intel-ml-card">
-      <div class="intel-ml-row"><span>Rolling accuracy (${ml.samples} trades):</span> <strong style="color:${statusColor}">${ml.accuracy}%</strong></div>
+      <div class="intel-ml-row"><span>Trade outcome accuracy (last ${ml.samples} trades):</span> <strong style="color:${statusColor}">${ml.accuracy}%</strong></div>
       ${confHtml}
       <div class="intel-ml-row"><span>Status:</span> <strong style="color:${statusColor}">${ml.status.toUpperCase()}</strong></div>
+      <div class="intel-ml-note" style="margin-top:4px;font-size:11px;color:#888">
+        Measures how often ML correctly predicted trade win/loss. The "Accuracy by Hour" chart below measures directional prediction accuracy (bullish/bearish) across all 160K+ predictions — a different metric.
+      </div>
       <div class="intel-ml-note">
         ${ml.status === 'critical' ? 'Predictor accuracy below 28% — auto-disabled by decision gates for affected sims.' : ''}
         ${ml.status === 'warning' ? 'Predictor accuracy below 40% — monitor closely. Auto-disable triggers at 28%.' : ''}

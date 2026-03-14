@@ -56,25 +56,53 @@ def _load_all_sim_trades() -> list[dict]:
 
 
 def _load_all_sim_summaries() -> dict:
-    """Load balance, open_trades count, is_dead from all sim JSON files."""
+    """Load balance, open_trades count, is_dead from all sims.
+
+    Source of truth is sim_config.yaml — every SIM entry counts even if
+    no JSON portfolio file exists yet (the sim simply hasn't traded).
+    """
     summaries = {}
-    if not os.path.isdir(SIM_DIR):
-        return summaries
-    for fname in os.listdir(SIM_DIR):
-        if not fname.endswith(".json") or not fname.startswith("SIM"):
-            continue
-        try:
-            with open(os.path.join(SIM_DIR, fname), "r") as f:
-                data = json.load(f)
-            sim_id = data.get("sim_id", fname.replace(".json", ""))
-            summaries[sim_id] = {
-                "balance": float(data.get("balance", 0)),
-                "open_trades": len(data.get("open_trades", [])),
-                "is_dead": bool(data.get("is_dead", False)),
-                "trade_count": len(data.get("trade_log", [])),
-            }
-        except Exception:
-            continue
+
+    # Load from JSON files first
+    if os.path.isdir(SIM_DIR):
+        for fname in os.listdir(SIM_DIR):
+            if not fname.endswith(".json") or not fname.startswith("SIM"):
+                continue
+            try:
+                with open(os.path.join(SIM_DIR, fname), "r") as f:
+                    data = json.load(f)
+                sim_id = data.get("sim_id", fname.replace(".json", ""))
+                summaries[sim_id] = {
+                    "balance": float(data.get("balance", 0)),
+                    "open_trades": len(data.get("open_trades", [])),
+                    "is_dead": bool(data.get("is_dead", False)),
+                    "trade_count": len(data.get("trade_log", [])),
+                }
+            except Exception:
+                continue
+
+    # Ensure every SIM in config is represented (even without a JSON file)
+    import re as _re
+    try:
+        import yaml
+        cfg_path = os.path.join(BASE_DIR, "simulation", "sim_config.yaml")
+        with open(cfg_path, "r") as f:
+            cfg = yaml.safe_load(f) or {}
+        for sid, profile in cfg.items():
+            if not isinstance(profile, dict):
+                continue
+            if not _re.match(r'^SIM\d+$', str(sid).upper()):
+                continue
+            if sid not in summaries:
+                summaries[sid] = {
+                    "balance": float(profile.get("balance_start", 3000)),
+                    "open_trades": 0,
+                    "is_dead": False,
+                    "trade_count": 0,
+                }
+    except Exception:
+        pass
+
     return summaries
 
 
@@ -104,10 +132,31 @@ def _build_trade_narrative(trade: dict) -> str:
     except (TypeError, ValueError):
         return f"{symbol} {option_type} using {signal_mode}: completed."
 
-    try:
-        minutes = float(hold_seconds) / 60
-        hold_str = f" in {minutes:.0f} minutes"
-    except (TypeError, ValueError):
+    # Compute hold duration — prefer hold_seconds, fall back to entry/exit timestamps
+    duration_seconds = None
+    if hold_seconds:
+        try:
+            duration_seconds = float(hold_seconds)
+        except (TypeError, ValueError):
+            pass
+    if duration_seconds is None or duration_seconds == 0:
+        try:
+            entry_dt = datetime.fromisoformat(str(trade.get("entry_time", "")))
+            exit_dt = datetime.fromisoformat(str(trade.get("exit_time", "")))
+            duration_seconds = (exit_dt - entry_dt).total_seconds()
+        except (TypeError, ValueError):
+            duration_seconds = None
+
+    if duration_seconds is not None and duration_seconds > 0:
+        if duration_seconds < 60:
+            hold_str = f" in {int(duration_seconds)}s"
+        elif duration_seconds < 3600:
+            hold_str = f" in {int(duration_seconds / 60)} minutes"
+        else:
+            h = int(duration_seconds / 3600)
+            m = int((duration_seconds % 3600) / 60)
+            hold_str = f" in {h}h {m}m"
+    else:
         hold_str = ""
 
     exit_desc = {

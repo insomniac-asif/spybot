@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📈</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css?v=20260313l">
+<link rel="stylesheet" href="/static/style.css?v=20260313r">
 <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
 </head>
 <body>
@@ -332,9 +332,9 @@
     <!-- Status Cards -->
     <div class="greeks-cards-row hidden" id="intel-cards">
       <div class="greeks-card">
-        <div class="greeks-card-label">ML Predictor</div>
+        <div class="greeks-card-label">ML Trade Accuracy</div>
         <div class="greeks-card-value" id="ic-ml-acc">—</div>
-        <div class="greeks-card-sub" id="ic-ml-sub">accuracy on recent trades</div>
+        <div class="greeks-card-sub" id="ic-ml-sub">win/loss prediction on trades</div>
       </div>
       <div class="greeks-card">
         <div class="greeks-card-label">Feature Drift</div>
@@ -356,7 +356,7 @@
 
     <!-- Blocked Signals -->
     <div class="greeks-section hidden" id="intel-blocked-section">
-      <div class="greeks-section-title">Blocked Signal Analysis</div>
+      <div class="greeks-section-title">Blocked Signal Analysis (Today)</div>
       <div class="table-scroll-wrap">
         <table class="greeks-heatmap-table intel-blocked-table" id="intel-blocked-table">
           <thead>
@@ -376,7 +376,7 @@
 
     <!-- ML Detail -->
     <div class="greeks-section hidden" id="intel-ml-section">
-      <div class="greeks-section-title">ML Predictor Health</div>
+      <div class="greeks-section-title">ML Trade Outcome Predictor</div>
       <div id="intel-ml-detail"></div>
     </div>
 
@@ -440,7 +440,7 @@
 
     <!-- Predictor Analytics Chart -->
     <div class="greeks-section hidden" id="intel-predictor-section">
-      <div class="greeks-section-title">Predictor Accuracy by Hour</div>
+      <div class="greeks-section-title">Directional Prediction Accuracy by Hour (all-time)</div>
       <div id="intel-predictor-chart" style="height:250px;"></div>
     </div>
 
@@ -551,6 +551,6 @@
 </div>
 <div class="drawer-backdrop" id="drawer-backdrop" onclick="closeDrawer()"></div>
 
-<script src="/static/main.js?v=20260313l"></script>
+<script src="/static/main.js?v=20260313r"></script>
 </body>
 </html>

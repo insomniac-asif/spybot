@@ -920,12 +920,14 @@ async def intel_decision_gates():
 
 @app.get("/api/intelligence/blocked-signals")
 async def intel_blocked_signals():
-    """Return blocked signal stats grouped by block reason."""
+    """Return blocked signal stats grouped by block reason (today only)."""
     try:
         from core.analytics_db import read_df as _db_read_df
+        today_str = datetime.now().strftime("%Y-%m-%d")
         df = await asyncio.to_thread(
             _db_read_df,
-            "SELECT block_reason, fwd_5m, fwd_15m, fwd_5m_status FROM blocked_signals ORDER BY id DESC LIMIT 500"
+            "SELECT block_reason, fwd_5m, fwd_15m, fwd_5m_status FROM blocked_signals WHERE timestamp >= ? ORDER BY id DESC",
+            (today_str,),
         )
         if df.empty:
             return {"reasons": [], "total": 0}
@@ -1085,6 +1087,7 @@ async def equity_curve():
             points[day] = points.get(day, 0) + float(pnl)
 
     # Compute current total balance across alive sims (always, even with no trades)
+    # Sims without JSON files yet count as alive at their starting balance.
     total_balance = 0
     alive_count = 0
     for sid, profile in config.items():
@@ -1093,8 +1096,13 @@ async def equity_curve():
         if not re.match(r'^SIM\d+$', str(sid).upper()):
             continue
         data = _load_sim(sid)
-        if data and not data.get("is_dead"):
-            total_balance += data.get("balance", 0)
+        if data:
+            if not data.get("is_dead"):
+                total_balance += data.get("balance", 0)
+                alive_count += 1
+        else:
+            # No JSON file — sim exists in config but hasn't traded yet
+            total_balance += float(profile.get("balance_start", 3000))
             alive_count += 1
 
     # Build cumulative series
@@ -1235,7 +1243,8 @@ async def system_health():
     except Exception:
         health["alpaca_last_call_ago_sec"] = None
 
-    # Sim state summary
+    # Sim state summary — source of truth is sim_config.yaml;
+    # sims without a JSON file yet are counted as alive (not-yet-traded).
     config = _load_config()
     alive = 0
     dead = 0
@@ -1252,6 +1261,10 @@ async def system_health():
             else:
                 alive += 1
                 total_balance += d.get("balance", 0)
+        else:
+            # No JSON file yet — sim exists in config but hasn't traded
+            alive += 1
+            total_balance += float(profile.get("balance_start", 3000))
     health["sims_alive"] = alive
     health["sims_dead"] = dead
     health["total_balance"] = round(total_balance, 2)

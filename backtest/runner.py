@@ -122,6 +122,13 @@ def main():
     else:
         profiles = all_profiles
 
+    # Skip disabled sims (enabled: false in config)
+    disabled = [k for k, v in profiles.items() if v.get("enabled") is False]
+    for k in disabled:
+        del profiles[k]
+    if disabled:
+        print(f"  Skipping {len(disabled)} disabled sims: {disabled}")
+
     # Skip live sim by default
     if args.skip_live and "SIM00" in profiles:
         print("  Skipping SIM00 (live sim). Use --sims to include it explicitly.")

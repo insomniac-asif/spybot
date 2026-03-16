@@ -105,6 +105,7 @@ SIM01:
   horizon: scalp
   signal_mode: MEAN_REVERSION
   features_enabled: false
+  regime_filter: RANGE_ONLY
   dte_min: 0
   dte_max: 0
   otm_pct: 0.008
@@ -117,15 +118,15 @@ SIM01:
   max_position_pct: 0.25
   risk_per_trade_pct: 0.04
   daily_loss_limit_pct: 0.08
-  max_open_trades: 2
+  max_open_trades: 1
   exposure_cap_pct: 0.2
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.08
-  profit_target_pct: 0.15
-  trailing_stop_activate_pct: 0.05
-  trailing_stop_trail_pct: 0.03
+  stop_loss_pct: 0.10
+  profit_target_pct: 0.40
+  trailing_stop_activate_pct: 0.12
+  trailing_stop_trail_pct: 0.05
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
   theta_burn_stop_tighten_pct: 0.5
@@ -159,15 +160,15 @@ SIM02:
   max_position_pct: 0.25
   risk_per_trade_pct: 0.04
   daily_loss_limit_pct: 0.08
-  max_open_trades: 2
+  max_open_trades: 1
   exposure_cap_pct: 0.2
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.08
-  profit_target_pct: 0.15
-  trailing_stop_activate_pct: 0.05
-  trailing_stop_trail_pct: 0.03
+  stop_loss_pct: 0.10
+  profit_target_pct: 0.35
+  trailing_stop_activate_pct: 0.10
+  trailing_stop_trail_pct: 0.04
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
   theta_burn_stop_tighten_pct: 0.5
@@ -207,9 +208,9 @@ SIM03:
   entry_slippage: 0.01
   exit_slippage: 0.01
   stop_loss_pct: 0.1
-  profit_target_pct: 0.2
-  trailing_stop_activate_pct: 0.06
-  trailing_stop_trail_pct: 0.04
+  profit_target_pct: 0.35
+  trailing_stop_activate_pct: 0.10
+  trailing_stop_trail_pct: 0.05
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
   theta_burn_stop_tighten_pct: 0.5
@@ -473,9 +474,9 @@ SIM09:
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.12
-  profit_target_pct: 0.25
-  trailing_stop_activate_pct: 0.08
+  stop_loss_pct: 0.10
+  profit_target_pct: 0.35
+  trailing_stop_activate_pct: 0.12
   trailing_stop_trail_pct: 0.04
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
@@ -516,10 +517,10 @@ SIM10:
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.08
-  profit_target_pct: 0.15
-  trailing_stop_activate_pct: 0.05
-  trailing_stop_trail_pct: 0.03
+  stop_loss_pct: 0.10
+  profit_target_pct: 0.35
+  trailing_stop_activate_pct: 0.10
+  trailing_stop_trail_pct: 0.04
   zscore_window: 30
   iv_series_window: 200
   theta_burn_enabled: true
@@ -527,6 +528,7 @@ SIM10:
   theta_burn_stop_tighten_pct: 0.5
 SIM11:
   name: Vol Expansion Trend
+  enabled: false
   symbols:
   - SPY
   - QQQ
@@ -605,9 +607,9 @@ SIM12:
   entry_slippage: 0.01
   exit_slippage: 0.01
   stop_loss_pct: 0.1
-  profit_target_pct: 0.2
-  trailing_stop_activate_pct: 0.06
-  trailing_stop_trail_pct: 0.04
+  profit_target_pct: 0.35
+  trailing_stop_activate_pct: 0.10
+  trailing_stop_trail_pct: 0.05
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
   theta_burn_stop_tighten_pct: 0.5
@@ -647,8 +649,8 @@ SIM13:
   entry_slippage: 0.01
   exit_slippage: 0.01
   stop_loss_pct: 0.1
-  profit_target_pct: 0.2
-  trailing_stop_activate_pct: 0.06
+  profit_target_pct: 0.30
+  trailing_stop_activate_pct: 0.10
   trailing_stop_trail_pct: 0.04
   zscore_window: 30
   iv_series_window: 200
@@ -821,9 +823,9 @@ SIM17:
   entry_slippage: 0.01
   exit_slippage: 0.01
   stop_loss_pct: 0.1
-  profit_target_pct: 0.2
-  trailing_stop_activate_pct: 0.06
-  trailing_stop_trail_pct: 0.04
+  profit_target_pct: 0.40
+  trailing_stop_activate_pct: 0.12
+  trailing_stop_trail_pct: 0.05
   zscore_window: 30
   iv_series_window: 200
   theta_burn_enabled: true
@@ -903,14 +905,14 @@ SIM19:
   max_position_pct: 0.25
   risk_per_trade_pct: 0.04
   daily_loss_limit_pct: 0.08
-  max_open_trades: 2
+  max_open_trades: 1
   exposure_cap_pct: 0.25
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
   stop_loss_pct: 0.1
-  profit_target_pct: 0.2
-  trailing_stop_activate_pct: 0.06
+  profit_target_pct: 0.30
+  trailing_stop_activate_pct: 0.10
   trailing_stop_trail_pct: 0.04
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
@@ -1084,9 +1086,9 @@ SIM23:
   entry_slippage: 0.01
   exit_slippage: 0.01
   stop_loss_pct: 0.1
-  profit_target_pct: 0.2
-  trailing_stop_activate_pct: 0.06
-  trailing_stop_trail_pct: 0.04
+  profit_target_pct: 0.40
+  trailing_stop_activate_pct: 0.12
+  trailing_stop_trail_pct: 0.05
   zscore_window: 30
   iv_series_window: 200
   theta_burn_enabled: true
@@ -1295,6 +1297,7 @@ SIM28:
   iv_crush_vega_multiplier: 2.0
 SIM29:
   name: Trend Pullback (POWER Hour)
+  enabled: false
   session_filter: POWER_HOUR
   symbols:
   - SPY
@@ -1339,6 +1342,7 @@ SIM29:
   iv_crush_vega_multiplier: 2.0
 SIM30:
   name: Multi-TF EMA Confirm
+  enabled: false
   symbols:
   - SPY
   - QQQ
@@ -1379,6 +1383,7 @@ SIM30:
   iv_crush_vega_multiplier: 2.0
 SIM31:
   name: VPOC Reversion
+  enabled: false
   symbols:
   - SPY
   - QQQ
@@ -1532,8 +1537,8 @@ SIM34:
   entry_slippage: 0.01
   exit_slippage: 0.01
   stop_loss_pct: 0.1
-  profit_target_pct: 0.2
-  trailing_stop_activate_pct: 0.06
+  profit_target_pct: 0.35
+  trailing_stop_activate_pct: 0.10
   trailing_stop_trail_pct: 0.04
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
@@ -1573,9 +1578,9 @@ SIM35:
   entry_slippage: 0.01
   exit_slippage: 0.01
   stop_loss_pct: 0.1
-  profit_target_pct: 0.2
-  trailing_stop_activate_pct: 0.06
-  trailing_stop_trail_pct: 0.04
+  profit_target_pct: 0.40
+  trailing_stop_activate_pct: 0.12
+  trailing_stop_trail_pct: 0.05
   theta_burn_enabled: true
   theta_burn_dte_threshold: 1
   theta_burn_stop_tighten_pct: 0.5
@@ -1614,6 +1619,7 @@ SIM36:
   trailing_stop_trail_pct: 0.08
 SIM37:
   name: GEX Flow Trader
+  enabled: false
   symbols:
   - SPY
   horizon: intraday
@@ -1643,6 +1649,7 @@ SIM37:
   trailing_stop_trail_pct: 0.08
 SIM38:
   name: FVG Fill Intraday
+  enabled: false
   symbols:
   - SPY
   - QQQ
@@ -1676,6 +1683,7 @@ SIM38:
   trailing_stop_trail_pct: 0.05
 SIM39:
   name: FVG Fill Range Only
+  enabled: false
   symbols:
   - SPY
   - QQQ
@@ -1727,9 +1735,9 @@ SIM40:
   hold_min_seconds: 600
   hold_max_seconds: 5400
   cutoff_time_et: '15:30'
-  balance_start: 500
+  balance_start: 3000
   small_account_mode: true
-  death_threshold: 50
+  death_threshold: 150
   max_position_pct: 0.20
   risk_per_trade_pct: 0.02
   daily_loss_limit_pct: 0.05
@@ -1738,10 +1746,10 @@ SIM40:
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.35
-  profit_target_pct: 0.65
-  trailing_stop_activate_pct: 0.20
-  trailing_stop_trail_pct: 0.10
+  stop_loss_pct: 0.20
+  profit_target_pct: 0.55
+  trailing_stop_activate_pct: 0.15
+  trailing_stop_trail_pct: 0.07
 
 SIM41:
   name: "NVDA Trend Pullback"
@@ -1756,9 +1764,9 @@ SIM41:
   hold_min_seconds: 600
   hold_max_seconds: 5400
   cutoff_time_et: '15:30'
-  balance_start: 500
+  balance_start: 3000
   small_account_mode: true
-  death_threshold: 50
+  death_threshold: 150
   max_position_pct: 0.20
   risk_per_trade_pct: 0.02
   daily_loss_limit_pct: 0.05
@@ -1767,10 +1775,10 @@ SIM41:
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.35
-  profit_target_pct: 0.65
-  trailing_stop_activate_pct: 0.20
-  trailing_stop_trail_pct: 0.10
+  stop_loss_pct: 0.20
+  profit_target_pct: 0.55
+  trailing_stop_activate_pct: 0.15
+  trailing_stop_trail_pct: 0.07
 
 SIM42:
   name: "AAPL Trend Pullback"
@@ -1785,9 +1793,9 @@ SIM42:
   hold_min_seconds: 600
   hold_max_seconds: 5400
   cutoff_time_et: '15:30'
-  balance_start: 500
+  balance_start: 3000
   small_account_mode: true
-  death_threshold: 50
+  death_threshold: 150
   max_position_pct: 0.20
   risk_per_trade_pct: 0.02
   daily_loss_limit_pct: 0.05
@@ -1796,10 +1804,10 @@ SIM42:
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.30
-  profit_target_pct: 0.55
-  trailing_stop_activate_pct: 0.15
-  trailing_stop_trail_pct: 0.08
+  stop_loss_pct: 0.15
+  profit_target_pct: 0.45
+  trailing_stop_activate_pct: 0.12
+  trailing_stop_trail_pct: 0.06
 
 SIM43:
   name: "MSFT Trend Pullback"
@@ -1814,9 +1822,9 @@ SIM43:
   hold_min_seconds: 600
   hold_max_seconds: 5400
   cutoff_time_et: '15:30'
-  balance_start: 500
+  balance_start: 3000
   small_account_mode: true
-  death_threshold: 50
+  death_threshold: 150
   max_position_pct: 0.20
   risk_per_trade_pct: 0.02
   daily_loss_limit_pct: 0.05
@@ -1825,7 +1833,7 @@ SIM43:
   max_spread_pct: 0.15
   entry_slippage: 0.01
   exit_slippage: 0.01
-  stop_loss_pct: 0.30
-  profit_target_pct: 0.55
-  trailing_stop_activate_pct: 0.15
-  trailing_stop_trail_pct: 0.08
+  stop_loss_pct: 0.15
+  profit_target_pct: 0.50
+  trailing_stop_activate_pct: 0.12
+  trailing_stop_trail_pct: 0.06

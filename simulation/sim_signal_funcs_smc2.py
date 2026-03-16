@@ -268,7 +268,7 @@ def _signal_vol_compression_breakout(df) -> tuple:
     Direction is determined by close vs EMA9.
     """
     COMPRESSION_LOOKBACK  = 20
-    COMPRESSION_THRESHOLD = 0.6
+    COMPRESSION_THRESHOLD = 0.7  # was 0.6; more bars qualify as compressed
 
     try:
         if df is None or len(df) < COMPRESSION_LOOKBACK + 2:
@@ -293,7 +293,7 @@ def _signal_vol_compression_breakout(df) -> tuple:
         if not compressed:
             return None, None, {"reason": "no_compression"}
 
-        if not (atr_now > atr_mean * 0.75):  # was 0.9; lowered for realistic expansion
+        if not (atr_now > atr_mean * 0.65):  # was 0.75; lower expansion bar for more signals
             return None, None, {"reason": "no_expansion"}
 
         close_col = _find_col(df, ["close", "Close"])

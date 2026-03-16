@@ -671,7 +671,7 @@ SIM14:
   horizon: intraday
   signal_mode: TREND_PULLBACK
   features_enabled: true
-  iv_rank_max: 0.3
+  iv_rank_max: 0.65
   dte_min: 1
   dte_max: 3
   otm_pct: 0.005
@@ -1108,6 +1108,7 @@ SIM24:
   horizon: intraday
   signal_mode: FVG_4H
   features_enabled: false
+  backtest_lookback: 500
   dte_min: 1
   dte_max: 3
   otm_pct: 0.005

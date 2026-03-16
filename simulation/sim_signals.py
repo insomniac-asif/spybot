@@ -292,28 +292,49 @@ def derive_sim_signal(
         return None, None, {"reason": "dispatch_error"}
 
 
+def _compute_structure_levels(df, close_col, high_col, low_col, lookback=100):
+    """Derive support/resistance from swing highs/lows when external structure_data unavailable."""
+    highs = df[high_col].values
+    lows = df[low_col].values
+    close = float(df.iloc[-1][close_col])
+    n = len(df)
+    start = max(3, n - lookback)
+    swing_highs, swing_lows = [], []
+    for i in range(start, n - 3):
+        if highs[i] > max(highs[i-3:i]) and highs[i] > max(highs[i+1:i+4]):
+            swing_highs.append(float(highs[i]))
+        if lows[i] < min(lows[i-3:i]) and lows[i] < min(lows[i+1:i+4]):
+            swing_lows.append(float(lows[i]))
+    nearest_support = max((s for s in swing_lows if s < close), default=None)
+    nearest_resistance = min((r for r in swing_highs if r > close), default=None)
+    dist_sup = (close - nearest_support) / close if nearest_support else None
+    dist_res = (nearest_resistance - close) / close if nearest_resistance else None
+    return {
+        "nearest_support": nearest_support,
+        "nearest_resistance": nearest_resistance,
+        "distance_to_support_pct": dist_sup,
+        "distance_to_resistance_pct": dist_res,
+    }
+
+
 def _signal_structure_fade(df, structure_data, options_data) -> tuple:
     """Mean-reversion trade off confirmed structure levels (support/resistance bounce)."""
     try:
-        if not isinstance(structure_data, dict):
-            return None, None, {"reason": "no_structure_data"}
-
         close_col = _find_col(df, ["close", "Close"])
+        high_col = _find_col(df, ["high", "High"])
+        low_col = _find_col(df, ["low", "Low"])
         rsi_col = _find_col(df, ["rsi", "RSI", "rsi14"])
-        if close_col is None or rsi_col is None or df is None or len(df) < 2:
+        if close_col is None or rsi_col is None or df is None or len(df) < 20:
             return None, None, {"reason": "missing_data"}
 
         close = float(df.iloc[-1][close_col])
         rsi = float(df.iloc[-1][rsi_col])
 
-        # Check VXX context — suppress if fear is rising (levels break in panic)
-        if isinstance(options_data, dict) and options_data.get("fear_rising"):
-            # Allow cross_asset_data to be passed via options_data since
-            # the watcher may thread it through feature_snapshot
-            pass
-        # Actually check via structure_data which may have xasset_ keys merged in
-        # from feature_snapshot — but the raw dicts are separate. We'll rely on
-        # the vxx check being optional.
+        # Use provided structure_data or compute from price bars
+        if not isinstance(structure_data, dict):
+            if high_col is None or low_col is None:
+                return None, None, {"reason": "no_structure_data"}
+            structure_data = _compute_structure_levels(df, close_col, high_col, low_col)
 
         nearest_support = structure_data.get("nearest_support")
         nearest_resistance = structure_data.get("nearest_resistance")
@@ -321,7 +342,7 @@ def _signal_structure_fade(df, structure_data, options_data) -> tuple:
         dist_to_resistance = structure_data.get("distance_to_resistance_pct")
 
         # BULLISH: price near support, RSI < 40
-        if nearest_support and dist_to_support is not None and dist_to_support < 0.002:
+        if nearest_support and dist_to_support is not None and dist_to_support < 0.003:
             if rsi < 40:
                 return "BULLISH", close, {
                     "reason": "structure_fade_support",
@@ -332,7 +353,7 @@ def _signal_structure_fade(df, structure_data, options_data) -> tuple:
                 }
 
         # BEARISH: price near resistance, RSI > 60
-        if nearest_resistance and dist_to_resistance is not None and dist_to_resistance < 0.002:
+        if nearest_resistance and dist_to_resistance is not None and dist_to_resistance < 0.003:
             if rsi > 60:
                 return "BEARISH", close, {
                     "reason": "structure_fade_resistance",

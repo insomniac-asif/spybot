@@ -787,7 +787,8 @@ class BacktestEngine:
                 sym_idx = sym_df.index.get_indexer([ts], method="pad")[0]
                 if sym_idx < BARS_WARMUP:
                     continue
-                window_df = sym_df.iloc[max(0, sym_idx - 200):sym_idx + 1]
+                lookback = self.profile.get("backtest_lookback", 200)
+                window_df = sym_df.iloc[max(0, sym_idx - lookback):sym_idx + 1]
 
                 regime = _compute_regime(window_df)
                 if not _check_regime_filter(self.profile, regime):

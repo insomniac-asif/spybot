@@ -99,26 +99,26 @@ FVG_4H_MAX_AGE_BARS  = 12
 FVG_4H_COOLDOWN_BARS = 60
 
 FVG_5M_AGG_MINUTES      = 5
-FVG_5M_MIN_GAP_PCT      = 0.0002
-FVG_5M_MAX_AGE_BARS     = 20
-FVG_5M_COOLDOWN_BARS    = 10
-FVG_5M_VOL_MULTIPLIER   = 0.5  # was 1.0; allow zones from lower-vol 5M bars
+FVG_5M_MIN_GAP_PCT      = 0.0001   # was 0.0002; detect smaller FVG gaps
+FVG_5M_MAX_AGE_BARS     = 30       # was 20; look further back for unfilled zones
+FVG_5M_COOLDOWN_BARS    = 5        # was 10; allow faster re-entry
+FVG_5M_VOL_MULTIPLIER   = 0.3      # was 0.5; accept lower-volume zones
 
-SWEEP_SWING_LOOKBACK      = 5
-SWEEP_CONFIRMATION_BARS   = 5  # was 3; wider window for confirmation close
-SWEEP_MIN_BODY_RATIO      = 0.3  # was 0.5; accept thinner reversal candles
-SWEEP_COOLDOWN_BARS       = 15
-SWEEP_MIN_BREAK_PCT       = 0.0001
+SWEEP_SWING_LOOKBACK      = 3     # was 5; detect more swing points
+SWEEP_CONFIRMATION_BARS   = 7     # was 5; wider confirmation window
+SWEEP_MIN_BODY_RATIO      = 0.2   # was 0.3; accept thinner reversal candles
+SWEEP_COOLDOWN_BARS       = 8     # was 15; faster re-entry
+SWEEP_MIN_BREAK_PCT       = 0.00005  # was 0.0001; smaller break threshold
 
 COMBO_SWEEP_WINDOW   = 3
-COMBO_COOLDOWN_BARS  = 20
+COMBO_COOLDOWN_BARS  = 10   # was 20; faster re-entry
 
 FLOW_VWAP_SLOPE_LOOKBACK   = 10
 FLOW_VOL_SMA_LOOKBACK      = 20
-FLOW_VOL_SPIKE_THRESHOLD   = 1.2  # was 1.5; lower threshold for vol spike
+FLOW_VOL_SPIKE_THRESHOLD   = 1.0   # was 1.2; any above-average volume qualifies
 FLOW_MOMENTUM_LOOKBACK     = 10
-FLOW_MOMENTUM_MIN_ATR      = 0.3  # was 0.5; less extreme momentum needed
-FLOW_COOLDOWN_BARS         = 30
+FLOW_MOMENTUM_MIN_ATR      = 0.15  # was 0.3; less extreme momentum needed
+FLOW_COOLDOWN_BARS         = 15    # was 30; faster re-entry
 
 
 # ---------------------------------------------------------------------------
